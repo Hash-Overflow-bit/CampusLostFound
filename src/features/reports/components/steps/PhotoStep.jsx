@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { prepareReportImage } from "../../services/imageService";
+import { compressReportImage } from "../../services/imageService";
 
 export default function PhotoStep({ draft, updateField }) {
   const [preview, setPreview] = useState("");
@@ -11,7 +11,7 @@ export default function PhotoStep({ draft, updateField }) {
     if (!file) return;
     try {
       setError("");
-      const prepared = await prepareReportImage(file);
+      const prepared = await compressReportImage(file);
       if (preview) URL.revokeObjectURL(preview);
       setPreview(URL.createObjectURL(prepared));
       updateField("image", prepared);
