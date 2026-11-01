@@ -4,7 +4,7 @@ import { CiPhone } from "react-icons/ci";
 import { HiOutlineLocationMarker } from "react-icons/hi";
 import { TbFileDescription } from "react-icons/tb";
 import { useAuth } from "../../AuthContext/AuthContext";
-import ReportItemForm from "../reportForm/ReportItemForm";
+import ReportFlow from "../../features/reports/components/ReportFlow";
 import { useDebouncedValue } from "../../hooks/useDebouncedValue";
 import { matchesItemSearch } from "../../features/items/itemSearch";
 import {
@@ -23,9 +23,7 @@ const ItemsList = ({ searchQuery = "", onlyUserItems = false, filter = "all" }) 
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState(null);
-  const [isOpen, setIsOpen] = useState(false);
-  const [formData, setFormData] = useState(null);
-  const [updateItemId, setUpdateItemId] = useState(null);
+  const [editingItem, setEditingItem] = useState(null);
   const debouncedSearch = useDebouncedValue(searchQuery, 300);
 
   const universityDomain = getUniversityDomain(user?.email);
@@ -117,8 +115,6 @@ const ItemsList = ({ searchQuery = "", onlyUserItems = false, filter = "all" }) 
   };
 
   const handleContactClick = () => {
-    // Never expose a reporter's stored email/phone from an item card.
-    // M09 replaces this transition with Claim -> verification -> private conversation.
     alert("Secure claims and private messaging are being introduced in V2. Personal contact details are hidden.");
   };
 
@@ -134,29 +130,25 @@ const ItemsList = ({ searchQuery = "", onlyUserItems = false, filter = "all" }) 
 
   const handleUpdateItem = (item) => {
     if (item.userId !== user?.uid) return;
-    setUpdateItemId(item.id);
-    setFormData({ ...item });
-    setIsOpen(true);
+    setEditingItem(item);
   };
 
-  const handleSubmit = async (updatedData) => {
-    if (!updateItemId || !updatedData || !user?.uid) return;
-    const ownedItem = items.find((item) => item.id === updateItemId);
-    if (!ownedItem || ownedItem.userId !== user.uid) return;
+  const handleUpdateSubmit = async (updatedData) => {
+    if (!editingItem?.id || !updatedData || !user?.uid) return;
+    if (editingItem.userId !== user.uid) return;
 
     try {
       await firebaseItemsRepository.updateOwnedItem({
-        itemId: updateItemId,
+        itemId: editingItem.id,
         userId: user.uid,
         changes: updatedData,
       });
       setItems((previous) =>
         previous.map((item) =>
-          item.id === updateItemId ? { ...item, ...updatedData } : item
+          item.id === editingItem.id ? { ...item, ...updatedData } : item
         )
       );
-      setIsOpen(false);
-      setUpdateItemId(null);
+      setEditingItem(null);
     } catch {
       alert("Failed to update item. Please try again.");
     }
@@ -171,25 +163,17 @@ const ItemsList = ({ searchQuery = "", onlyUserItems = false, filter = "all" }) 
   }
 
   if (error && items.length === 0) {
-    return (
-      <div className="items-list-container">
-        <div className="error"><p>{error}</p></div>
-      </div>
-    );
+    return <div className="items-list-container"><div className="error"><p>{error}</p></div></div>;
   }
 
   return (
     <div className="items-list-container">
-      {isOpen && formData && (
+      {editingItem && (
         <div className="update-modal">
-          <ReportItemForm
-            initialData={formData}
-            onClose={() => {
-              setIsOpen(false);
-              setUpdateItemId(null);
-            }}
-            onSubmit={handleSubmit}
-            isUpdate
+          <ReportFlow
+            initialData={editingItem}
+            onCancel={() => setEditingItem(null)}
+            onComplete={handleUpdateSubmit}
           />
         </div>
       )}
