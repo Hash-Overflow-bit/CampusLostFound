@@ -13,7 +13,7 @@ set search_path = public, auth
 as $$
 declare
   current_user auth.users%rowtype;
-  email_domain text;
+  caller_domain text;
   resolved_campus public.campuses%rowtype;
   result public.profiles%rowtype;
 begin
@@ -37,12 +37,12 @@ begin
     raise exception 'valid_email_required' using errcode = 'P0001';
   end if;
 
-  email_domain := lower(split_part(current_user.email, '@', 2));
+  caller_domain := lower(split_part(current_user.email, '@', 2));
 
-  select * into resolved_campus
-  from public.campuses
-  where active = true
-    and lower(email_domain) = public.onboard_my_campus.email_domain
+  select c.* into resolved_campus
+  from public.campuses c
+  where c.active = true
+    and lower(c.email_domain) = caller_domain
   limit 1;
 
   if resolved_campus.id is null then
