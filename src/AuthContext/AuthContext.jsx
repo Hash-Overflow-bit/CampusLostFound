@@ -4,7 +4,7 @@ import { onAuthStateChanged, signOut } from "firebase/auth";
 import { auth } from "../firebaseConfig/firebaseCore";
 import { AUTH_BACKENDS, getAuthBackend } from "../features/auth/authBackend";
 import { getSupabaseSession, signOutSupabase, subscribeToSupabaseAuth } from "../features/auth/supabaseAuthAdapter";
-import { getCurrentProfile } from "../features/auth/repositories/supabaseProfileRepository";
+import { getCurrentProfile, onboardCurrentUserCampus } from "../features/auth/repositories/supabaseProfileRepository";
 import { normalizeFirebaseUser, normalizeSupabaseUser } from "../features/auth/sessionModel";
 import { ROLES } from "../app/routePolicy";
 
@@ -30,10 +30,15 @@ export const AuthProvider = ({ children }) => {
         return;
       }
       try {
-        const trustedProfile = await getCurrentProfile();
+        let trustedProfile = await getCurrentProfile();
+        if (normalized.emailVerified && !trustedProfile?.campus_id) {
+          trustedProfile = await onboardCurrentUserCampus();
+        }
         if (active) setProfile(trustedProfile);
       } catch (error) {
-        console.error("Profile hydration error:", error);
+        // Unsupported/unmapped university domains leave the user authenticated but without a
+        // trusted campus. Do not infer campus from signup metadata or elevate authorization.
+        console.error("Profile/campus hydration error:", error);
         if (active) setProfile(null);
       } finally {
         if (active) setLoading(false);
@@ -85,6 +90,7 @@ export const AuthProvider = ({ children }) => {
     backend,
     isAuthenticated: Boolean(user),
     isEmailVerified: Boolean(user?.emailVerified),
+    hasTrustedCampus: Boolean(profile?.campus_id),
     loading,
     logout,
   }), [user, profile, loading, backend]);
