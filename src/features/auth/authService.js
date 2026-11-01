@@ -5,7 +5,6 @@ import {
   sendPasswordResetEmail,
   signInWithEmailAndPassword,
   signOut,
-  updatePassword,
   updateProfile,
 } from "firebase/auth";
 import { AUTH_BACKENDS, getAuthBackend } from "./authBackend";
@@ -18,7 +17,12 @@ import {
   updateSupabasePassword,
 } from "./supabaseAuthAdapter";
 
-const APP_URL = "https://campuslostfound.vercel.app";
+function getAppUrl() {
+  const configured = import.meta.env.VITE_APP_URL?.trim();
+  if (configured) return configured.replace(/\/$/, "");
+  if (typeof window !== "undefined" && window.location?.origin) return window.location.origin;
+  return "https://campuslostfound.vercel.app";
+}
 
 export async function signIn(email, password) {
   if (getAuthBackend() === AUTH_BACKENDS.SUPABASE) {
@@ -46,24 +50,24 @@ export async function signUp({ email, password, fullName, university, campus }) 
   const metadata = { full_name: fullName, university, campus };
 
   if (getAuthBackend() === AUTH_BACKENDS.SUPABASE) {
-    return signUpWithSupabaseEmail(email, password, metadata);
+    const result = await signUpWithSupabaseEmail(email, password, metadata);
+    // Email-confirmation flows must not leave an unverified authenticated session behind.
+    if (result.session && !result.user?.email_confirmed_at) await signOutSupabase();
+    return result;
   }
 
   const result = await createUserWithEmailAndPassword(auth, email, password);
   await updateProfile(result.user, { displayName: fullName });
-  await sendEmailVerification(result.user, { url: `${APP_URL}/login`, handleCodeInApp: false });
+  await sendEmailVerification(result.user, { url: `${getAppUrl()}/login`, handleCodeInApp: false });
   await signOut(auth);
   return { user: result.user };
 }
 
 export async function resendConfirmation(email) {
   if (getAuthBackend() === AUTH_BACKENDS.SUPABASE) {
-    return resendSupabaseConfirmation(email, `${APP_URL}/login`);
+    return resendSupabaseConfirmation(email, `${getAppUrl()}/login`);
   }
 
-  // Firebase requires the unverified user to be authenticated to resend safely.
-  // Do not ask the browser to retain or replay the signup password. The user can
-  // sign in again and the login flow can offer resend from that authenticated state.
   const error = new Error("Sign in again to resend your confirmation email.");
   error.code = "auth/reauth-required";
   throw error;
@@ -71,14 +75,21 @@ export async function resendConfirmation(email) {
 
 export async function requestPasswordReset(email) {
   if (getAuthBackend() === AUTH_BACKENDS.SUPABASE) {
-    return sendSupabasePasswordReset(email, `${APP_URL}/update-password`);
+    return sendSupabasePasswordReset(email, `${getAppUrl()}/update-password`);
   }
 
-  return sendPasswordResetEmail(auth, email, { url: `${APP_URL}/login`, handleCodeInApp: false });
+  return sendPasswordResetEmail(auth, email, { url: `${getAppUrl()}/login`, handleCodeInApp: false });
 }
 
 export async function setNewPassword(password) {
-  if (getAuthBackend() === AUTH_BACKENDS.SUPABASE) return updateSupabasePassword(password);
-  if (!auth.currentUser) throw new Error("Password recovery session is missing or expired.");
-  return updatePassword(auth.currentUser, password);
+  if (getAuthBackend() !== AUTH_BACKENDS.SUPABASE) {
+    const error = new Error("Use the password reset link provided by the authentication service.");
+    error.code = "auth/recovery-provider-required";
+    throw error;
+  }
+
+  const user = await updateSupabasePassword(password);
+  // End the temporary recovery session. The user must authenticate again with the new password.
+  await signOutSupabase();
+  return user;
 }
