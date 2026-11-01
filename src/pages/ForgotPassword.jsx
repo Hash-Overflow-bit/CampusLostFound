@@ -1,75 +1,71 @@
 import { useState } from "react";
-import { getAuth, sendPasswordResetEmail } from "firebase/auth";
+import { Link } from "react-router-dom";
+import { requestPasswordReset } from "../features/auth/authService";
+import { AUTH_SUCCESS_MESSAGES, getAuthErrorMessage } from "../features/auth/authMessages";
+import { assertCooldownReady, startCooldown } from "../features/auth/clientCooldown";
 
 function ForgotPassword() {
   const [email, setEmail] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
 
-  const handleForgotPassword = async (email) => {
-    console.log("Forgot password requested for email:", email);
-    const auth = getAuth();
-    console.log("Auth object:", auth);
+  const handleSubmit = async (event) => {
+    event.preventDefault();
+    setMessage("");
+    setError("");
+
+    const normalizedEmail = email.trim().toLowerCase();
+    if (!normalizedEmail) {
+      setError("Enter your university email address.");
+      return;
+    }
+
     try {
-      await sendPasswordResetEmail(auth, email, {
-        url: "https://campuslostfound.vercel.app/login",
-        handleCodeInApp: true,
-      });
-      console.log("Password reset email sent successfully.");
-      alert("Password reset link sent to your email!");
-    } catch (error) {
-      console.error("Error in resetting password:", error);
-      alert(error.message);
+      assertCooldownReady("password-reset");
+      setLoading(true);
+      await requestPasswordReset(normalizedEmail);
+      startCooldown("password-reset", 60);
+      setMessage(AUTH_SUCCESS_MESSAGES.resetRequested);
+    } catch (requestError) {
+      if (requestError?.code === "client-cooldown") setError(requestError.message);
+      else setError(getAuthErrorMessage(requestError, "reset"));
+    } finally {
+      setLoading(false);
     }
   };
 
-  const handleSubmit = (e) => {
-    e.preventDefault();
-    console.log("Form submitted with email:", email);
-    handleForgotPassword(email);
-  };
-
   return (
-    <div
-      style={{
-        maxWidth: 400,
-        margin: "40px auto",
-        padding: 24,
-        border: "1px solid #eee",
-        borderRadius: 8,
-        background: "#fff",
-      }}
-    >
-      <h2 style={{ marginBottom: 16 }}>Forgot Password</h2>
-      <form onSubmit={handleSubmit}>
-        <input
-          type="email"
-          placeholder="Enter your registered email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          required
-          style={{
-            width: "100%",
-            padding: 8,
-            marginBottom: 12,
-            borderRadius: 4,
-            border: "1px solid #ccc",
-          }}
-        />
-        <button
-          type="submit"
-          style={{
-            width: "100%",
-            padding: 10,
-            background: "#007bff",
-            color: "#fff",
-            border: "none",
-            borderRadius: 4,
-            fontWeight: "bold",
-          }}
-        >
-          Send Reset Link
-        </button>
-      </form>
-    </div>
+    <main className="auth-page">
+      <section className="auth-card" aria-labelledby="forgot-password-title">
+        <p className="auth-eyebrow">Account recovery</p>
+        <h1 id="forgot-password-title">Reset your password</h1>
+        <p>Enter your university email. If an account exists, we'll send instructions to reset your password.</p>
+
+        <form onSubmit={handleSubmit} noValidate>
+          <label htmlFor="reset-email">University email</label>
+          <input
+            id="reset-email"
+            type="email"
+            autoComplete="email"
+            value={email}
+            onChange={(event) => setEmail(event.target.value)}
+            placeholder="you@university.edu.pk"
+            disabled={loading}
+            required
+          />
+
+          {error && <div className="auth-message auth-message--error" role="alert">{error}</div>}
+          {message && <div className="auth-message auth-message--success" role="status">{message}</div>}
+
+          <button type="submit" className="login-btn" disabled={loading}>
+            {loading ? "Sending..." : "Send reset link"}
+          </button>
+        </form>
+
+        <p className="auth-footer"><Link to="/login">Back to sign in</Link></p>
+      </section>
+    </main>
   );
 }
 
