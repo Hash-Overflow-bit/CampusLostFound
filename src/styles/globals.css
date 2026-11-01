@@ -1,0 +1,50 @@
+@import "./tokens.css";
+
+*, *::before, *::after { box-sizing: border-box; }
+html { color-scheme: light; scroll-behavior: smooth; }
+body {
+  margin: 0;
+  min-width: 320px;
+  background: var(--color-background);
+  color: var(--color-text);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+button, input, textarea, select { font: inherit; }
+img { max-width: 100%; }
+a { color: inherit; }
+:focus-visible { outline: 3px solid color-mix(in srgb, var(--color-primary-500) 35%, transparent); outline-offset: 2px; }
+
+.app-shell { min-height: 100dvh; display: flex; flex-direction: column; }
+.app-shell__content { flex: 1 0 auto; }
+
+.ui-button {
+  min-height: 44px;
+  border: 0;
+  border-radius: var(--radius-md);
+  padding: 0 var(--space-4);
+  font-weight: 700;
+  cursor: pointer;
+  transition: transform var(--transition-fast), box-shadow var(--transition-fast), opacity var(--transition-fast);
+}
+.ui-button:hover:not(:disabled) { transform: translateY(-1px); box-shadow: var(--shadow-sm); }
+.ui-button:disabled { cursor: not-allowed; opacity: .55; }
+.ui-button--primary { background: var(--color-primary-600); color: white; }
+.ui-button--secondary { background: var(--color-surface); color: var(--color-text); border: 1px solid var(--color-border); }
+.ui-button--danger { background: var(--color-danger); color: white; }
+
+.ui-status-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 26px;
+  border-radius: 999px;
+  padding: 0 var(--space-3);
+  font-size: .75rem;
+  font-weight: 800;
+  letter-spacing: .025em;
+}
+.ui-status-badge--lost { background: color-mix(in srgb, var(--color-lost) 14%, white); color: var(--color-lost); }
+.ui-status-badge--found { background: color-mix(in srgb, var(--color-found) 14%, white); color: var(--color-found); }
+.ui-status-badge--match { background: color-mix(in srgb, var(--color-match) 14%, white); color: var(--color-match); }
+.ui-status-badge--recovered { background: color-mix(in srgb, var(--color-recovered) 14%, white); color: var(--color-recovered); }

@@ -1,124 +1,102 @@
-/* eslint-disable no-unused-vars */
-import React, { useState, useEffect } from "react";
-import {
-  collection,
-  getDocs,
-  query,
-  where,
-  doc,
-  updateDoc,
-} from "firebase/firestore";
+import React, { useEffect, useMemo, useState } from "react";
 import { MdDelete, MdEdit } from "react-icons/md";
-import { db } from "../../firebaseConfig/firebaseCore";
-import { useAuth } from "../../AuthContext/AuthContext";
-import { CiLocationOn, CiPhone } from "react-icons/ci";
+import { CiPhone } from "react-icons/ci";
 import { HiOutlineLocationMarker } from "react-icons/hi";
-import { LuChartScatter } from "react-icons/lu";
-import { MdCallMissed } from "react-icons/md";
 import { TbFileDescription } from "react-icons/tb";
-import { AiFillProduct } from "react-icons/ai";
-import ReportItemForm from "../reportForm/ReportItemForm";
+import { useAuth } from "../../AuthContext/AuthContext";
+import ReportFlow from "../../features/reports/components/ReportFlow";
+import { useDebouncedValue } from "../../hooks/useDebouncedValue";
+import { matchesItemSearch } from "../../features/items/itemSearch";
+import {
+  firebaseItemsRepository,
+  ITEMS_PAGE_SIZE,
+} from "../../features/items/repositories/firebaseItemsRepository";
 import "./ItemsList.css";
 
-const ItemsList = ({
-  searchQuery = "",
-  onlyUserItems = false,
-  filter = "all",
-}) => {
-  const [items, setItems] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  // Remove local filter state, use prop instead
-  const { user, isAuthenticated, loading: authLoading } = useAuth();
-  const [isOpen, setIsOpen] = useState(false);
-  const [formData, setFormData] = useState(null);
-  const [updateItemId, setUpdateItemId] = useState(null);
+const getUniversityDomain = (email) => email?.split("@")[1] || null;
 
-  const getUserUniversityDomain = (email) => {
-    if (!email) return null;
-    const domain = email.split("@")[1];
-    return domain;
-  };
+const ItemsList = ({ searchQuery = "", onlyUserItems = false, filter = "all" }) => {
+  const { user, isAuthenticated, loading: authLoading } = useAuth();
+  const [items, setItems] = useState([]);
+  const [cursor, setCursor] = useState(null);
+  const [hasMore, setHasMore] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [error, setError] = useState(null);
+  const [editingItem, setEditingItem] = useState(null);
+  const debouncedSearch = useDebouncedValue(searchQuery, 300);
+
+  const universityDomain = getUniversityDomain(user?.email);
+  const ownerId = onlyUserItems ? user?.uid : null;
 
   useEffect(() => {
-    if (authLoading) {
-      setLoading(true);
-      return;
-    }
-    const fetchItems = async () => {
-      try {
-        if (!isAuthenticated || !user?.email) {
+    let active = true;
+
+    const loadFirstPage = async () => {
+      if (authLoading) return;
+      if (!isAuthenticated || !universityDomain) {
+        if (active) {
           setItems([]);
-          setError(
-            "Please log in to view lost and found items from your university.\nTry Again"
-          );
-          if (!isAuthenticated || !user?.email) {
-            setItems([]);
-            setError(
-              "Please log in to view lost and found items from your university.\nTry Again"
-            );
-            setLoading(false);
-            return;
-          }
-          ("Unable to determine your university from your email address.");
-          setError("Failed to load items. Please try again later.");
+          setError("Please log in with your verified university account to view campus items.");
           setLoading(false);
-          return;
         }
-        const itemsCollection = collection(db, "items");
-        const userDomain = getUserUniversityDomain(user.email);
-        const q = query(
-          itemsCollection,
-          where("university.domain", "==", userDomain)
-        );
-        const querySnapshot = await getDocs(q);
-        const fetchedItems = [];
-        querySnapshot.forEach((doc) => {
-          fetchedItems.push({ id: doc.id, ...doc.data() });
-        });
-        fetchedItems.sort((a, b) => {
-          const dateA = a.createdAt?.toDate
-            ? a.createdAt.toDate()
-            : new Date(a.createdAt);
-          const dateB = b.createdAt?.toDate
-            ? b.createdAt.toDate()
-            : new Date(b.createdAt);
-          return dateB - dateA;
-        });
-        setItems(fetchedItems);
+        return;
+      }
+
+      try {
+        setLoading(true);
         setError(null);
+        const page = await firebaseItemsRepository.listByUniversity({
+          universityDomain,
+          role: filter,
+          ownerId,
+          pageSize: ITEMS_PAGE_SIZE,
+        });
+        if (!active) return;
+        setItems(page.items);
+        setCursor(page.cursor);
+        setHasMore(page.hasMore);
       } catch {
-        setError("Failed to load items. Please try again later.");
+        if (active) setError("Failed to load items. Please try again later.");
       } finally {
-        setLoading(false);
+        if (active) setLoading(false);
       }
     };
-    fetchItems();
-  }, [isAuthenticated, user?.email, authLoading]);
 
-  // Use filter prop from parent
-  const filteredItems = items.filter((item) => {
-    if (item.isDeleted || item.status !== "active") return false;
-    // Dashboard: only show user's items
-    if (onlyUserItems) {
-      if (!user || !item.userId || item.userId !== user.uid) return false;
-      if (filter !== "all" && item.role !== filter) {
-        return false;
-      }
-    } else {
-      // Home: show all lost/found items from university
-      if (filter !== "all" && item.role !== filter) {
-        return false;
-      }
+    loadFirstPage();
+    return () => {
+      active = false;
+    };
+  }, [authLoading, isAuthenticated, universityDomain, ownerId, filter]);
+
+  const visibleItems = useMemo(
+    () => items.filter((item) => matchesItemSearch(item, debouncedSearch)),
+    [items, debouncedSearch]
+  );
+
+  const loadMore = async () => {
+    if (!hasMore || !cursor || loadingMore) return;
+    try {
+      setLoadingMore(true);
+      const page = await firebaseItemsRepository.listByUniversity({
+        universityDomain,
+        role: filter,
+        ownerId,
+        cursor,
+        pageSize: ITEMS_PAGE_SIZE,
+      });
+      setItems((previous) => {
+        const seen = new Set(previous.map((item) => item.id));
+        return [...previous, ...page.items.filter((item) => !seen.has(item.id))];
+      });
+      setCursor(page.cursor);
+      setHasMore(page.hasMore);
+    } catch {
+      setError("Could not load more items. Please try again.");
+    } finally {
+      setLoadingMore(false);
     }
-    if (!searchQuery) return true;
-    const q = searchQuery.toLowerCase();
-    return (
-      (item.title && item.title.toLowerCase().includes(q)) ||
-      (item.description && item.description.toLowerCase().includes(q)) ||
-      (item.location && item.location.toLowerCase().includes(q))
-    );
-  });
+  };
 
   const formatDate = (timestamp) => {
     if (!timestamp) return "Unknown date";
@@ -136,46 +114,41 @@ const ItemsList = ({
     }
   };
 
-  const handleContactClick = (item) => {
-    const contactInfo = item.contact || {};
-    const email = contactInfo.email || "Not provided";
-    const phone = contactInfo.phone || "Not provided";
-    const preference = contactInfo.preference || "email";
-    alert(
-      `Contact Info:\nEmail: ${email}\nPhone: ${phone}\nPreferred Contact: ${preference}`
-    );
+  const handleContactClick = () => {
+    alert("Secure claims and private messaging are being introduced in V2. Personal contact details are hidden.");
   };
 
   const handleRemoveItem = async (item) => {
-    if (!item.id) return;
+    if (!item.id || item.userId !== user?.uid) return;
     try {
-      await updateDoc(doc(db, "items", item.id), { isDeleted: true });
-      alert("Item removed successfully.");
-      setItems((prev) => prev.filter((i) => i.id !== item.id));
+      await firebaseItemsRepository.softDeleteOwnedItem({ itemId: item.id, userId: user.uid });
+      setItems((previous) => previous.filter((current) => current.id !== item.id));
     } catch {
       alert("Failed to remove item. Please try again.");
     }
   };
 
-  // Open ReportItemForm modal with selected item data
   const handleUpdateItem = (item) => {
-    setUpdateItemId(item.id);
-    setFormData({ ...item });
-    setIsOpen(true);
+    if (item.userId !== user?.uid) return;
+    setEditingItem(item);
   };
 
-  // Submit updated data to Firestore
-  const handleSubmit = async (updatedData) => {
-    if (!updateItemId || !updatedData) return;
+  const handleUpdateSubmit = async (updatedData) => {
+    if (!editingItem?.id || !updatedData || !user?.uid) return;
+    if (editingItem.userId !== user.uid) return;
+
     try {
-      const docRef = doc(db, "items", updateItemId);
-      await updateDoc(docRef, updatedData);
-      alert("Item updated!");
-      setIsOpen(false);
-      setUpdateItemId(null);
-      setItems((prev) =>
-        prev.map((i) => (i.id === updateItemId ? { ...i, ...updatedData } : i))
+      await firebaseItemsRepository.updateOwnedItem({
+        itemId: editingItem.id,
+        userId: user.uid,
+        changes: updatedData,
+      });
+      setItems((previous) =>
+        previous.map((item) =>
+          item.id === editingItem.id ? { ...item, ...updatedData } : item
+        )
       );
+      setEditingItem(null);
     } catch {
       alert("Failed to update item. Please try again.");
     }
@@ -184,169 +157,74 @@ const ItemsList = ({
   if (authLoading || loading) {
     return (
       <div className="items-list-container">
-        <div className="loading">
-          <div className="spinner"></div>
-          <p>
-            {authLoading
-              ? "Authenticating..."
-              : "Loading items from your university..."}
-          </p>
-        </div>
+        <div className="loading"><div className="spinner" /><p>Loading campus items...</p></div>
       </div>
     );
   }
 
-  if (error) {
-    return (
-      <div className="items-list-container">
-        <div className="error">
-          <p>{error}</p>
-          <button onClick={() => window.location.reload()}>Try Again</button>
-        </div>
-      </div>
-    );
+  if (error && items.length === 0) {
+    return <div className="items-list-container"><div className="error"><p>{error}</p></div></div>;
   }
 
   return (
     <div className="items-list-container">
-      {/* Update Modal: Show ReportItemForm for editing */}
-      {isOpen && formData && (
-        <div
-          className="update-modal"
-          style={{
-            position: "fixed",
-            top: 50,
-            left: 400,
-
-            width: 500,
-            zIndex: 9999,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-          }}
-        >
-          <ReportItemForm
-            initialData={formData}
-            onClose={() => {
-              setIsOpen(false);
-              setUpdateItemId(null);
-            }}
-            onSubmit={handleSubmit}
-            isUpdate={true}
+      {editingItem && (
+        <div className="update-modal">
+          <ReportFlow
+            initialData={editingItem}
+            onCancel={() => setEditingItem(null)}
+            onComplete={handleUpdateSubmit}
           />
         </div>
       )}
+
       <div className="items-header">
-        <h2>
-          Lost & Found Items
-          {isAuthenticated && user?.email && (
-            <span className="university-info">
-              {" - " +
-                (getUserUniversityDomain(user.email)?.toUpperCase() ||
-                  "Your University")}
-            </span>
-          )}
-        </h2>
+        <h2>Lost & Found Items{universityDomain ? ` - ${universityDomain.toUpperCase()}` : ""}</h2>
       </div>
-      {filteredItems.length === 0 ? (
-        <div className="no-items">
-          <p>
-            {!isAuthenticated
-              ? "Please log in to view lost and found items from your university."
-              : `No ${
-                  filter === "all" ? "" : filter
-                } items found from your university (${getUserUniversityDomain(
-                  user?.email
-                )}).`}
-          </p>
-          {isAuthenticated && (
-            <p className="hint">Be the first to report a lost or found item!</p>
-          )}
-        </div>
+
+      {visibleItems.length === 0 ? (
+        <div className="no-items"><p>No matching campus items found.</p></div>
       ) : (
         <div className="items-grid">
-          {filteredItems.map((item) => (
-            <div
-              key={item.id}
-              className={`item-card ${
-                item.role === "lost" ? "lost-card" : "found-card"
-              }`}
-            >
+          {visibleItems.map((item) => (
+            <div key={item.id} className={`item-card ${item.role === "lost" ? "lost-card" : "found-card"}`}>
               <div className="card-header">
-                <span className={`status-badge ${item.role}`}>
-                  {item.role === "lost" ? <>Lost</> : <>Found</>}
-                </span>
+                <span className={`status-badge ${item.role}`}>{item.role === "lost" ? "Lost" : "Found"}</span>
                 <span className="date">{formatDate(item.createdAt)}</span>
               </div>
               <div className="item-title-container">
                 <h3 className="item-title">{item.title || "Unknown Item"}</h3>
-                <p className="item-category">
-                  {item.category || "Not specified"}
-                </p>
+                <p className="item-category">{item.category || "Not specified"}</p>
               </div>
-              {item.imageUrl || (item.image && item.image.imageUrl) ? (
-                <div className="card-image">
-                  <img
-                    src={item.imageUrl || item.image.imageUrl}
-                    alt={item.title}
-                  />
-                </div>
-              ) : item.role === "lost" ? (
-                <div className="card-image no-image">
-                  <span className="no-image-text">
-                    No picture uploaded for this lost item
-                  </span>
-                </div>
-              ) : null}
+              {(item.imageUrl || item.image?.imageUrl) && (
+                <div className="card-image"><img loading="lazy" src={item.imageUrl || item.image.imageUrl} alt={item.title || "Reported item"} /></div>
+              )}
               <div className="card-content">
-                <p className="item-description">
-                  <TbFileDescription className="content-icon des-icon" />
-                  {item.description || "No description provided"}
-                </p>
-                <p className="item-location">
-                  <HiOutlineLocationMarker className="content-icon" />
-                  {item.location || "Not specified"}
-                </p>
-                {item.university && (
-                  <p className="item-university">
-                    {item.university.name || item.university}
-                  </p>
-                )}
+                <p className="item-description"><TbFileDescription className="content-icon des-icon" />{item.description || "No description provided"}</p>
+                <p className="item-location"><HiOutlineLocationMarker className="content-icon" />{item.location || "Not specified"}</p>
+                {item.university && <p className="item-university">{item.university.name || item.university}</p>}
               </div>
               <div className="card-footer">
                 {onlyUserItems && item.userId === user?.uid ? (
                   <>
-                    <button
-                      className="remove-item-btn"
-                      onClick={() => handleRemoveItem(item)}
-                    >
-                      <MdDelete className="button-icon" /> Remove Item
-                    </button>
-                    <button
-                      className="update-item-btn"
-                      onClick={() => handleUpdateItem(item)}
-                    >
-                      <MdEdit className="button-icon" /> Update
-                    </button>
+                    <button className="remove-item-btn" onClick={() => handleRemoveItem(item)}><MdDelete className="button-icon" /> Remove Item</button>
+                    <button className="update-item-btn" onClick={() => handleUpdateItem(item)}><MdEdit className="button-icon" /> Update</button>
                   </>
                 ) : (
-                  <button
-                    className={`contact-btn ${
-                      item.role === "found"
-                        ? "found-btn"
-                        : item.role === "lost"
-                        ? "lost-btn"
-                        : ""
-                    }`}
-                    onClick={() => handleContactClick(item)}
-                  >
-                    <CiPhone className="button-icon" />
-                    {item.role === "found" ? "Hey ! this is mine" : "Contact"}
+                  <button className={`contact-btn ${item.role === "found" ? "found-btn" : "lost-btn"}`} onClick={handleContactClick}>
+                    <CiPhone className="button-icon" />{item.role === "found" ? "This might be mine" : "I found this"}
                   </button>
                 )}
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {error && <div className="error"><p>{error}</p></div>}
+      {hasMore && (
+        <div className="items-pagination">
+          <button type="button" onClick={loadMore} disabled={loadingMore}>{loadingMore ? "Loading..." : "Load more"}</button>
         </div>
       )}
     </div>

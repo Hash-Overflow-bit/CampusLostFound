@@ -12,6 +12,7 @@
   "dependencies": {
     "@formspree/react": "^3.0.0",
     "@popperjs/core": "^2.11.8",
+    "@supabase/supabase-js": "^2.81.1",
     "bootstrap": "^5.3.8",
     "firebase": "^11.0.2",
     "react": "^19.1.1",

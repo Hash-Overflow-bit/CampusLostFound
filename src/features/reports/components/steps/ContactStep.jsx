@@ -1,0 +1,3 @@
+export default function ContactStep({ draft, updateField }) {
+  return <div className="report-step"><h3>Contact preferences</h3><p className="report-step__hint">Your contact details are account data and must not be rendered on public item cards.</p><label>Account email<input type="email" value={draft.email || ""} readOnly /></label><label>Phone (optional)<input type="tel" value={draft.phone || ""} onChange={(e) => updateField("phone", e.target.value)} placeholder="Optional" /></label><label>Preferred contact<select value={draft.contactPreference || "email"} onChange={(e) => updateField("contactPreference", e.target.value)}><option value="email">Email</option><option value="phone">Phone</option><option value="in-app">In-app messaging</option></select></label></div>;
+}

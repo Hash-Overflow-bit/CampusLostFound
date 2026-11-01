@@ -1,87 +1,28 @@
-import React, { useState, useCallback } from "react";
-import ReportItemForm from "../componenets/reportForm/ReportItemForm";
+import { useCallback, useState } from "react";
+import { useAuth } from "../AuthContext/AuthContext";
 import SEO from "../componenets/seo/SEO";
+import ReportFlow from "../features/reports/components/ReportFlow";
+import { getUniversityFromEmail } from "../features/reports/reportModel";
+import { firebaseReportRepository } from "../features/reports/repositories/firebaseReportRepository";
 import "./Report.css";
 
-const Report = React.memo(() => {
-  const seoTitle = "Report Lost or Found Item | Campus Lost Found";
-  const seoDescription =
-    "Report a lost or found item at your university. Help reunite students with their belongings using Campus Lost Found's secure platform.";
-  const seoKeywords = [
-    "report lost item",
-    "report found item",
-    "campus lost found",
-    "university lost and found",
-    "student belongings",
-    "Pakistan universities",
-    "lost property",
-    "found property",
-    "item recovery",
-    "student help",
-    "secure reporting",
-    "campus platform",
-    "lost item form",
-    "found item form",
-    "reunite students",
-    "university helpdesk",
-  ];
-  const [showForm, setShowForm] = useState(true);
+export default function Report() {
+  const { user } = useAuth();
+  const [completed, setCompleted] = useState(false);
 
-  // Memoized handlers to prevent unnecessary re-renders
-  const handleFormSubmit = useCallback(() => {
-    // Alert is now handled within ReportItemForm component
-  }, []);
+  const submitReport = useCallback(async (report) => {
+    const university = getUniversityFromEmail(user?.email);
+    if (!user?.uid || !university) throw new Error("A verified university account is required.");
 
-  const handleFormClose = useCallback(() => {
-    setShowForm(false);
-    window.history.back();
-  }, []);
+    await firebaseReportRepository.create({ report, userId: user.uid, university });
+    setCompleted(true);
+  }, [user]);
 
-  const handleReportAnother = useCallback(() => {
-    setShowForm(true);
-  }, []);
-
-  return (
-    <>
-      <SEO
-        title={seoTitle}
-        description={seoDescription}
-        keywords={seoKeywords}
-        url={window.location.origin + "/report"}
-      />
-      <div className="report-page">
-        <div className="report-page-header">
-          <h1>Report an Item</h1>
-          <p>Help reunite lost items with their owners or report found items</p>
-        </div>
-
-        {showForm && (
-          <ReportItemForm
-            onClose={handleFormClose}
-            onSubmit={handleFormSubmit}
-          />
-        )}
-
-        {!showForm && (
-          <div className="report-success">
-            <h2>Item Reported Successfully!</h2>
-            <p>
-              Your item has been added to our database. We'll help connect you
-              with the owner/finder.
-            </p>
-            <button
-              onClick={handleReportAnother}
-              className="report-another-btn"
-            >
-              Report Another Item
-            </button>
-          </div>
-        )}
-      </div>
-    </>
-  );
-});
-
-Report.displayName = "Report";
-
-export default Report;
+  return <>
+    <SEO title="Report Lost or Found Item | Campus Lost Found" description="Report a lost or found item at your university and help your campus community recover belongings safely." url={`${window.location.origin}/report`} />
+    <main className="report-page">
+      <div className="report-page-header"><h1>Report an Item</h1><p>Share the useful details. Private account information stays separate from public discovery.</p></div>
+      {completed ? <div className="report-success"><h2>Item reported successfully</h2><p>Your report is ready for campus discovery and future matching.</p><button type="button" className="report-another-btn" onClick={() => setCompleted(false)}>Report another item</button></div> : <ReportFlow onCancel={() => window.history.back()} onComplete={submitReport} />}
+    </main>
+  </>;
+}

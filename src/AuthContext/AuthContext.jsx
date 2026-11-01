@@ -1,87 +1,105 @@
 /* eslint-disable react-refresh/only-export-components */
-import { createContext, useContext, useEffect, useState } from "react";
-import { auth } from "../firebaseConfig/firebaseCore";
+import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { onAuthStateChanged, signOut } from "firebase/auth";
+import { auth } from "../firebaseConfig/firebaseCore";
+import { AUTH_BACKENDS, getAuthBackend } from "../features/auth/authBackend";
+import { getSupabaseSession, signOutSupabase, subscribeToSupabaseAuth } from "../features/auth/supabaseAuthAdapter";
+import { getCurrentProfile, onboardCurrentUserCampus } from "../features/auth/repositories/supabaseProfileRepository";
+import { normalizeFirebaseUser, normalizeSupabaseUser } from "../features/auth/sessionModel";
+import { ROLES } from "../app/routePolicy";
 
-const AuthContext = createContext();
+const AuthContext = createContext(null);
 
-// ✅ Provider
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
+  const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const backend = getAuthBackend();
 
   useEffect(() => {
-    let unsubscribe = () => {};
-    let isMounted = true;
+    localStorage.removeItem("rememberedPassword");
+    let active = true;
 
-    // Initialize Firebase Auth lazily with error handling
-    const initAuth = async () => {
+    const applySupabaseSession = async (session) => {
+      if (!active) return;
+      const normalized = normalizeSupabaseUser(session?.user);
+      setUser(normalized);
+      if (!normalized) {
+        setProfile(null);
+        setLoading(false);
+        return;
+      }
       try {
-        if (!isMounted) return;
-
-        unsubscribe = onAuthStateChanged(auth, (currentUser) => {
-          if (!isMounted) return;
-
-          if (currentUser) {
-            setUser(currentUser);
-            setIsAuthenticated(true);
-          } else {
-            setUser(null);
-            setIsAuthenticated(false);
-          }
-          setLoading(false);
-        });
-      } catch (error) {
-        console.error("Auth initialization error:", error);
-        if (isMounted) {
-          setUser(null);
-          setIsAuthenticated(false);
-          setLoading(false);
+        let trustedProfile = await getCurrentProfile();
+        if (normalized.emailVerified && !trustedProfile?.campus_id) {
+          trustedProfile = await onboardCurrentUserCampus();
         }
+        if (active) setProfile(trustedProfile);
+      } catch (error) {
+        // Unsupported/unmapped university domains leave the user authenticated but without a
+        // trusted campus. Do not infer campus from signup metadata or elevate authorization.
+        console.error("Profile/campus hydration error:", error);
+        if (active) setProfile(null);
+      } finally {
+        if (active) setLoading(false);
       }
     };
 
-    initAuth();
+    if (backend === AUTH_BACKENDS.SUPABASE) {
+      getSupabaseSession().then(applySupabaseSession).catch((error) => {
+        console.error("Supabase auth hydration error:", error);
+        if (active) { setUser(null); setProfile(null); setLoading(false); }
+      });
+      const unsubscribe = subscribeToSupabaseAuth(applySupabaseSession);
+      return () => { active = false; unsubscribe(); };
+    }
 
-    return () => {
-      isMounted = false;
-      unsubscribe();
-    };
-  }, []);
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      if (!active) return;
+      setUser(normalizeFirebaseUser(currentUser));
+      // Transitional V1 users have no trusted role store. Never elevate them client-side.
+      setProfile(currentUser ? { role: ROLES.STUDENT } : null);
+      setLoading(false);
+    }, (error) => {
+      console.error("Firebase auth state error:", error);
+      if (active) { setUser(null); setProfile(null); setLoading(false); }
+    });
 
-  // helper logout function
+    return () => { active = false; unsubscribe(); };
+  }, [backend]);
+
   const logout = async () => {
     try {
-      await signOut(auth);
-      setUser(null);
-      setIsAuthenticated(false);
-
-      // Clear Remember Me data on logout
+      if (backend === AUTH_BACKENDS.SUPABASE) await signOutSupabase();
+      else await signOut(auth);
       localStorage.removeItem("rememberedEmail");
       localStorage.removeItem("rememberedPassword");
       localStorage.removeItem("rememberMe");
-
       return { success: true };
     } catch (error) {
       console.error("Logout error:", error);
-      return { success: false, error: error.message };
+      return { success: false, error: "Unable to sign out. Please try again." };
     }
   };
 
-  // Check if user email is verified
-  const isEmailVerified = user?.emailVerified || false;
-
-  const value = {
+  const value = useMemo(() => ({
     user,
-    isAuthenticated,
-    isEmailVerified,
+    profile,
+    role: profile?.role || null,
+    campus: profile?.campuses || null,
+    backend,
+    isAuthenticated: Boolean(user),
+    isEmailVerified: Boolean(user?.emailVerified),
+    hasTrustedCampus: Boolean(profile?.campus_id),
     loading,
     logout,
-  };
+  }), [user, profile, loading, backend]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };
 
-// ✅ Custom Hook to use Auth anywhere
-export const useAuth = () => useContext(AuthContext);
+export const useAuth = () => {
+  const context = useContext(AuthContext);
+  if (!context) throw new Error("useAuth must be used inside AuthProvider");
+  return context;
+};

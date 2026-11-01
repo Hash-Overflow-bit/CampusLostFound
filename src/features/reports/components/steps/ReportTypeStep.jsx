@@ -1,0 +1,3 @@
+export default function ReportTypeStep({ draft, updateField }) {
+  return <div className="report-step"><h3>What happened?</h3><p className="report-step__hint">Choose the report type. This controls how matching and claims work.</p><div className="report-choice-grid">{["lost", "found"].map((role) => <button key={role} type="button" className={`report-choice ${draft.role === role ? "is-selected" : ""}`} onClick={() => updateField("role", role)}><strong>{role === "lost" ? "I lost something" : "I found something"}</strong><span>{role === "lost" ? "Create a lost-item report" : "Help the owner recover it"}</span></button>)}</div></div>;
+}
