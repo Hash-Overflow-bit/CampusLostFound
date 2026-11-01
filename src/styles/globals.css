@@ -1,0 +1,17 @@
+@import "./tokens.css";
+
+*, *::before, *::after { box-sizing: border-box; }
+html { color-scheme: light; scroll-behavior: smooth; }
+body {
+  margin: 0;
+  min-width: 320px;
+  background: var(--color-background);
+  color: var(--color-text);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+button, input, textarea, select { font: inherit; }
+img { max-width: 100%; }
+a { color: inherit; }
+:focus-visible { outline: 3px solid color-mix(in srgb, var(--color-primary-500) 35%, transparent); outline-offset: 2px; }
