@@ -15,7 +15,12 @@ const ProtectedRoute = ({ children, access = ACCESS.VERIFIED, allowedRoles = [] 
   }
 
   if (access === ACCESS.GUEST_ONLY && isAuthenticated) {
-    return <Navigate to={isEmailVerified ? "/dashboard" : "/login"} replace />;
+    // A verified user has no reason to visit login/signup/reset-request pages.
+    // An unverified authenticated session must not be redirected back to the
+    // same guest-only route, which would create a redirect loop. Sign the user
+    // out during provider-specific sign-in/signup flows and use the login page
+    // for verification guidance.
+    return <Navigate to={isEmailVerified ? "/dashboard" : "/"} replace state={{ reason: "verify" }} />;
   }
 
   if (!isAuthenticated) {
