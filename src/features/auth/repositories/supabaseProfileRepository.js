@@ -6,6 +6,8 @@ function requireClient() {
   return client;
 }
 
+const PROFILE_SELECT = "id, campus_id, display_name, role, verified_at, campuses(id, name, slug, email_domain)";
+
 export async function getCurrentProfile() {
   const client = requireClient();
   const { data: userData, error: userError } = await client.auth.getUser();
@@ -14,12 +16,19 @@ export async function getCurrentProfile() {
 
   const { data, error } = await client
     .from("profiles")
-    .select("id, campus_id, display_name, role, verified_at, campuses(id, name, slug, email_domain)")
+    .select(PROFILE_SELECT)
     .eq("id", userData.user.id)
     .maybeSingle();
 
   if (error) throw error;
   return data;
+}
+
+export async function onboardCurrentUserCampus() {
+  const client = requireClient();
+  const { error } = await client.rpc("onboard_my_campus");
+  if (error) throw error;
+  return getCurrentProfile();
 }
 
 export async function updateCurrentProfile(patch) {
@@ -40,7 +49,7 @@ export async function updateCurrentProfile(patch) {
     .from("profiles")
     .update(values)
     .eq("id", userData.user.id)
-    .select("id, campus_id, display_name, role, verified_at, campuses(id, name, slug, email_domain)")
+    .select(PROFILE_SELECT)
     .single();
 
   if (error) throw error;
