@@ -3,6 +3,7 @@ export const ACCESS = Object.freeze({
   GUEST_ONLY: "guest-only",
   AUTHENTICATED: "authenticated",
   VERIFIED: "verified",
+  CAMPUS: "campus",
   ROLE: "role",
 });
 
@@ -28,8 +29,9 @@ const ROUTE_POLICY = Object.freeze({
   "/forgot-password": { access: ACCESS.GUEST_ONLY },
   // Recovery providers may establish a temporary session before the password is changed.
   "/update-password": { access: ACCESS.PUBLIC },
-  "/dashboard": { access: ACCESS.VERIFIED },
-  "/report": { access: ACCESS.VERIFIED },
+  // Campus workflows require a confirmed identity plus server-resolved campus membership.
+  "/dashboard": { access: ACCESS.CAMPUS },
+  "/report": { access: ACCESS.CAMPUS },
 });
 
 export const getRoutePolicy = (pathname) => {
@@ -39,7 +41,7 @@ export const getRoutePolicy = (pathname) => {
 
 export const getRouteAccess = (pathname) => getRoutePolicy(pathname).access;
 
-export const canAccessRoute = ({ access, isAuthenticated, isEmailVerified, role, allowedRoles = [] }) => {
+export const canAccessRoute = ({ access, isAuthenticated, isEmailVerified, hasTrustedCampus, role, allowedRoles = [] }) => {
   switch (access) {
     case ACCESS.GUEST_ONLY:
       return !isAuthenticated;
@@ -47,8 +49,10 @@ export const canAccessRoute = ({ access, isAuthenticated, isEmailVerified, role,
       return isAuthenticated;
     case ACCESS.VERIFIED:
       return isAuthenticated && isEmailVerified;
+    case ACCESS.CAMPUS:
+      return isAuthenticated && isEmailVerified && hasTrustedCampus;
     case ACCESS.ROLE:
-      return isAuthenticated && isEmailVerified && allowedRoles.includes(role);
+      return isAuthenticated && isEmailVerified && hasTrustedCampus && allowedRoles.includes(role);
     case ACCESS.PUBLIC:
     default:
       return true;
