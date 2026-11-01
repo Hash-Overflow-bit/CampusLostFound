@@ -7,6 +7,7 @@ const Home = lazy(() => import("../componenets/herosection/Herosection"));
 const Login = lazy(() => import("../pages/Login"));
 const Signup = lazy(() => import("../pages/Signup"));
 const ForgotPassword = lazy(() => import("../pages/ForgotPassword"));
+const UpdatePassword = lazy(() => import("../pages/UpdatePassword"));
 const Dashboard = lazy(() => import("../pages/Dashboard"));
 const Report = lazy(() => import("../pages/Report"));
 const ReportDemo = lazy(() => import("../pages/ReportDemo"));
@@ -29,6 +30,8 @@ export default function AppRouter() {
       <Route path="/login" element={<GuestOnly><Login /></GuestOnly>} />
       <Route path="/signup" element={<GuestOnly><Signup /></GuestOnly>} />
       <Route path="/forgot-password" element={<GuestOnly><ForgotPassword /></GuestOnly>} />
+      {/* Recovery links establish a temporary authenticated session, so this route must not be guest-only. */}
+      <Route path="/update-password" element={<UpdatePassword />} />
       <Route path="/about" element={<About />} />
       <Route path="/how-it-works" element={<HowItWorks />} />
       <Route path="/blog" element={<Blog />} />
