@@ -1,0 +1,65 @@
+import { useEffect, useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
+import { getAuthBackend, AUTH_BACKENDS } from "../features/auth/authBackend";
+import { getSupabaseSession } from "../features/auth/supabaseAuthAdapter";
+import { setNewPassword } from "../features/auth/authService";
+import { getAuthErrorMessage } from "../features/auth/authMessages";
+import { validatePassword } from "../features/auth/authValidation";
+import { consumeClientCooldown } from "../features/auth/clientCooldown";
+import SEO from "../componenets/seo/SEO";
+import "./Login.css";
+
+export default function UpdatePassword() {
+  const navigate = useNavigate();
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [checking, setChecking] = useState(true);
+  const [recoveryReady, setRecoveryReady] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [notice, setNotice] = useState(null);
+
+  useEffect(() => {
+    let active = true;
+    async function checkRecoverySession() {
+      if (getAuthBackend() !== AUTH_BACKENDS.SUPABASE) {
+        if (active) {
+          setNotice({ type: "error", text: "This recovery link cannot be completed here. Request a new password reset link." });
+          setChecking(false);
+        }
+        return;
+      }
+      try {
+        const session = await getSupabaseSession();
+        if (!active) return;
+        setRecoveryReady(Boolean(session?.user));
+        if (!session?.user) setNotice({ type: "error", text: "This password recovery link is invalid or has expired. Request a new one." });
+      } catch {
+        if (active) setNotice({ type: "error", text: "We could not verify this recovery link. Request a new one." });
+      } finally {
+        if (active) setChecking(false);
+      }
+    }
+    checkRecoverySession();
+    return () => { active = false; };
+  }, []);
+
+  const submit = async (event) => {
+    event.preventDefault();
+    setNotice(null);
+    const passwordError = validatePassword(password);
+    if (passwordError !== true) { setNotice({ type: "error", text: passwordError }); return; }
+    if (password !== confirmPassword) { setNotice({ type: "error", text: "Passwords do not match." }); return; }
+    const cooldown = consumeClientCooldown("update-password", 5000);
+    if (!cooldown.allowed) { setNotice({ type: "error", text: "Please wait a few seconds before trying again." }); return; }
+    setSubmitting(true);
+    try {
+      await setNewPassword(password);
+      setNotice({ type: "success", text: "Your password has been updated. You can now sign in with your new password." });
+      setTimeout(() => navigate("/login", { replace: true, state: { reason: "password-updated" } }), 1200);
+    } catch (error) {
+      setNotice({ type: "error", text: getAuthErrorMessage(error, "reset") });
+    } finally { setSubmitting(false); }
+  };
+
+  return <><SEO title="Update password | Campus Lost Found" description="Securely update your Campus Lost Found password." url="https://campuslostfound.vercel.app/update-password" links={[{ rel: "canonical", href: "https://campuslostfound.vercel.app/update-password" }]} /><main className="login-main-container"><div className="login-wrapper"><div className="login-header"><h1 className="login-title">Choose a new password</h1><p className="login-subtitle">Use a strong password you do not reuse elsewhere.</p></div>{checking ? <p role="status">Checking recovery link…</p> : <form className="login-form" onSubmit={submit} noValidate><div className="form-group"><label className="form-label" htmlFor="newPassword">New password</label><input id="newPassword" className="form-control" type="password" autoComplete="new-password" value={password} onChange={(event) => setPassword(event.target.value)} disabled={!recoveryReady || submitting} /><small>Use 10+ characters with uppercase, lowercase and a number.</small></div><div className="form-group"><label className="form-label" htmlFor="confirmNewPassword">Confirm new password</label><input id="confirmNewPassword" className="form-control" type="password" autoComplete="new-password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} disabled={!recoveryReady || submitting} /></div>{notice && <div className={notice.type === "success" ? "success-message" : "error-message"} role={notice.type === "error" ? "alert" : "status"}>{notice.text}</div>}{recoveryReady && <button className="login-btn" type="submit" disabled={submitting}>{submitting ? "Updating password…" : "Update password"}</button>}{!recoveryReady && <p><Link to="/forgot-password">Request a new reset link</Link></p>}</form>}</div></main></>;
+}
