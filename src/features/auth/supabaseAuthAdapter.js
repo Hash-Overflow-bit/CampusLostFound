@@ -7,8 +7,8 @@ export async function getSupabaseSession() {
 }
 
 export function subscribeToSupabaseAuth(callback) {
-  const { data } = getSupabaseClient().auth.onAuthStateChange((_event, session) => {
-    callback(session);
+  const { data } = getSupabaseClient().auth.onAuthStateChange((event, session) => {
+    callback(session, event);
   });
 
   return () => data.subscription.unsubscribe();
@@ -25,6 +25,16 @@ export async function signUpWithSupabaseEmail(email, password, metadata = {}) {
     email,
     password,
     options: { data: metadata },
+  });
+  if (error) throw error;
+  return data;
+}
+
+export async function resendSupabaseConfirmation(email, redirectTo) {
+  const { data, error } = await getSupabaseClient().auth.resend({
+    type: "signup",
+    email,
+    options: { emailRedirectTo: redirectTo },
   });
   if (error) throw error;
   return data;
@@ -49,4 +59,10 @@ export async function sendSupabasePasswordReset(email, redirectTo) {
     redirectTo,
   });
   if (error) throw error;
+}
+
+export async function updateSupabasePassword(password) {
+  const { data, error } = await getSupabaseClient().auth.updateUser({ password });
+  if (error) throw error;
+  return data.user;
 }
