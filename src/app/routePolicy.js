@@ -26,6 +26,8 @@ const ROUTE_POLICY = Object.freeze({
   "/login": { access: ACCESS.GUEST_ONLY },
   "/signup": { access: ACCESS.GUEST_ONLY },
   "/forgot-password": { access: ACCESS.GUEST_ONLY },
+  // Recovery providers may establish a temporary session before the password is changed.
+  "/update-password": { access: ACCESS.PUBLIC },
   "/dashboard": { access: ACCESS.VERIFIED },
   "/report": { access: ACCESS.VERIFIED },
 });
