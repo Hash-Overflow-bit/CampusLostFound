@@ -1,67 +1,41 @@
 /* eslint-disable react-refresh/only-export-components */
-import { createContext, useContext, useEffect, useState } from "react";
+import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { auth } from "../firebaseConfig/firebaseCore";
 import { onAuthStateChanged, signOut } from "firebase/auth";
 
-const AuthContext = createContext();
+const AuthContext = createContext(null);
 
-// ✅ Provider
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
 
   useEffect(() => {
-    let unsubscribe = () => {};
-    let isMounted = true;
+    // Remove legacy plaintext credential persistence immediately.
+    localStorage.removeItem("rememberedPassword");
 
-    // Initialize Firebase Auth lazily with error handling
-    const initAuth = async () => {
-      try {
-        if (!isMounted) return;
-
-        unsubscribe = onAuthStateChanged(auth, (currentUser) => {
-          if (!isMounted) return;
-
-          if (currentUser) {
-            setUser(currentUser);
-            setIsAuthenticated(true);
-          } else {
-            setUser(null);
-            setIsAuthenticated(false);
-          }
-          setLoading(false);
-        });
-      } catch (error) {
-        console.error("Auth initialization error:", error);
-        if (isMounted) {
-          setUser(null);
-          setIsAuthenticated(false);
-          setLoading(false);
-        }
+    const unsubscribe = onAuthStateChanged(
+      auth,
+      (currentUser) => {
+        setUser(currentUser);
+        setLoading(false);
+      },
+      (error) => {
+        console.error("Auth state error:", error);
+        setUser(null);
+        setLoading(false);
       }
-    };
+    );
 
-    initAuth();
-
-    return () => {
-      isMounted = false;
-      unsubscribe();
-    };
+    return unsubscribe;
   }, []);
 
-  // helper logout function
   const logout = async () => {
     try {
       await signOut(auth);
-      setUser(null);
-      setIsAuthenticated(false);
-
-      // Clear Remember Me data on logout
+      // These values are UX preferences only. Passwords are never persisted.
       localStorage.removeItem("rememberedEmail");
       localStorage.removeItem("rememberedPassword");
       localStorage.removeItem("rememberMe");
-
       return { success: true };
     } catch (error) {
       console.error("Logout error:", error);
@@ -69,19 +43,22 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  // Check if user email is verified
-  const isEmailVerified = user?.emailVerified || false;
-
-  const value = {
-    user,
-    isAuthenticated,
-    isEmailVerified,
-    loading,
-    logout,
-  };
+  const value = useMemo(
+    () => ({
+      user,
+      isAuthenticated: Boolean(user),
+      isEmailVerified: Boolean(user?.emailVerified),
+      loading,
+      logout,
+    }),
+    [user, loading]
+  );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };
 
-// ✅ Custom Hook to use Auth anywhere
-export const useAuth = () => useContext(AuthContext);
+export const useAuth = () => {
+  const context = useContext(AuthContext);
+  if (!context) throw new Error("useAuth must be used inside AuthProvider");
+  return context;
+};
