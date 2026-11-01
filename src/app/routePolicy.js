@@ -3,32 +3,41 @@ export const ACCESS = Object.freeze({
   GUEST_ONLY: "guest-only",
   AUTHENTICATED: "authenticated",
   VERIFIED: "verified",
+  ROLE: "role",
+});
+
+export const ROLES = Object.freeze({
+  STUDENT: "student",
+  MODERATOR: "moderator",
+  ADMIN: "admin",
 });
 
 const ROUTE_POLICY = Object.freeze({
-  "/": ACCESS.PUBLIC,
-  "/about": ACCESS.PUBLIC,
-  "/how-it-works": ACCESS.PUBLIC,
-  "/blog": ACCESS.PUBLIC,
-  "/contact": ACCESS.PUBLIC,
-  "/universities": ACCESS.PUBLIC,
-  "/privacy-policy": ACCESS.PUBLIC,
-  "/terms-of-service": ACCESS.PUBLIC,
-  "/lost": ACCESS.PUBLIC,
-  "/found": ACCESS.PUBLIC,
-  "/login": ACCESS.GUEST_ONLY,
-  "/signup": ACCESS.GUEST_ONLY,
-  "/forgot-password": ACCESS.GUEST_ONLY,
-  "/dashboard": ACCESS.VERIFIED,
-  "/report": ACCESS.VERIFIED,
+  "/": { access: ACCESS.PUBLIC },
+  "/about": { access: ACCESS.PUBLIC },
+  "/how-it-works": { access: ACCESS.PUBLIC },
+  "/blog": { access: ACCESS.PUBLIC },
+  "/contact": { access: ACCESS.PUBLIC },
+  "/universities": { access: ACCESS.PUBLIC },
+  "/privacy-policy": { access: ACCESS.PUBLIC },
+  "/terms-of-service": { access: ACCESS.PUBLIC },
+  "/lost": { access: ACCESS.PUBLIC },
+  "/found": { access: ACCESS.PUBLIC },
+  "/login": { access: ACCESS.GUEST_ONLY },
+  "/signup": { access: ACCESS.GUEST_ONLY },
+  "/forgot-password": { access: ACCESS.GUEST_ONLY },
+  "/dashboard": { access: ACCESS.VERIFIED },
+  "/report": { access: ACCESS.VERIFIED },
 });
 
-export const getRouteAccess = (pathname) => {
-  if (pathname.startsWith("/universities/")) return ACCESS.PUBLIC;
-  return ROUTE_POLICY[pathname] ?? ACCESS.PUBLIC;
+export const getRoutePolicy = (pathname) => {
+  if (pathname.startsWith("/universities/")) return { access: ACCESS.PUBLIC };
+  return ROUTE_POLICY[pathname] ?? { access: ACCESS.PUBLIC };
 };
 
-export const canAccessRoute = ({ access, isAuthenticated, isEmailVerified }) => {
+export const getRouteAccess = (pathname) => getRoutePolicy(pathname).access;
+
+export const canAccessRoute = ({ access, isAuthenticated, isEmailVerified, role, allowedRoles = [] }) => {
   switch (access) {
     case ACCESS.GUEST_ONLY:
       return !isAuthenticated;
@@ -36,13 +45,14 @@ export const canAccessRoute = ({ access, isAuthenticated, isEmailVerified }) => 
       return isAuthenticated;
     case ACCESS.VERIFIED:
       return isAuthenticated && isEmailVerified;
+    case ACCESS.ROLE:
+      return isAuthenticated && isEmailVerified && allowedRoles.includes(role);
     case ACCESS.PUBLIC:
     default:
       return true;
   }
 };
 
-// Only internal absolute paths may be used as post-login destinations.
 export const getSafeReturnPath = (candidate, fallback = "/dashboard") => {
   if (typeof candidate !== "string") return fallback;
   if (!candidate.startsWith("/") || candidate.startsWith("//")) return fallback;
