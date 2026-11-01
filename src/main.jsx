@@ -2,17 +2,14 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { HelmetProvider } from "react-helmet-async";
 import { AuthProvider } from "./AuthContext/AuthContext";
-// import { Analytics } from "@vercel/analytics/next"
 import App from "./App.jsx";
+import "./styles/globals.css";
 
-// Optimized Bootstrap loading with better performance
 const loadBootstrapAssets = () => {
-  // Only load Bootstrap CSS if not already loaded
   if (!document.querySelector('link[href*="bootstrap"]')) {
     const link = document.createElement("link");
     link.rel = "stylesheet";
-    link.href =
-      "https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css";
+    link.href = "https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css";
     link.crossOrigin = "anonymous";
     link.media = "print";
     link.onload = function () {
@@ -21,28 +18,23 @@ const loadBootstrapAssets = () => {
     document.head.appendChild(link);
   }
 
-  // Load Bootstrap JS with intersection observer for better performance
-  const script = document.createElement("script");
-  script.src =
-    "https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js";
-  script.async = true;
-  script.crossOrigin = "anonymous";
-  document.head.appendChild(script);
+  if (!document.querySelector('script[src*="bootstrap.bundle"]')) {
+    const script = document.createElement("script");
+    script.src = "https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js";
+    script.async = true;
+    script.crossOrigin = "anonymous";
+    document.head.appendChild(script);
+  }
 };
 
-// Load Bootstrap assets efficiently
 if (document.readyState === "loading") {
-  document.addEventListener("DOMContentLoaded", loadBootstrapAssets);
+  document.addEventListener("DOMContentLoaded", loadBootstrapAssets, { once: true });
 } else {
-  // DOM already ready
   loadBootstrapAssets();
 }
 
-// Remove loading fallback and render app
 const rootElement = document.getElementById("root");
-if (rootElement.firstChild) {
-  rootElement.removeChild(rootElement.firstChild);
-}
+if (!rootElement) throw new Error("Application root element was not found");
 
 createRoot(rootElement).render(
   <StrictMode>
