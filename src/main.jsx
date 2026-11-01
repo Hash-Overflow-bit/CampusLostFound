@@ -1,8 +1,7 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
-import { HelmetProvider } from "react-helmet-async";
-import { AuthProvider } from "./AuthContext/AuthContext";
 import App from "./App.jsx";
+import AppProviders from "./app/providers";
 import "./styles/globals.css";
 
 const loadBootstrapAssets = () => {
@@ -38,10 +37,8 @@ if (!rootElement) throw new Error("Application root element was not found");
 
 createRoot(rootElement).render(
   <StrictMode>
-    <AuthProvider>
-      <HelmetProvider>
-        <App />
-      </HelmetProvider>
-    </AuthProvider>
+    <AppProviders>
+      <App />
+    </AppProviders>
   </StrictMode>
 );
