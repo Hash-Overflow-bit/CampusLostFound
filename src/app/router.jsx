@@ -1,6 +1,7 @@
 import { lazy } from "react";
 import { Route, Routes } from "react-router-dom";
 import ProtectedRoute from "../ProtectedRoute";
+import { ACCESS } from "./routePolicy";
 
 const Home = lazy(() => import("../componenets/herosection/Herosection"));
 const Login = lazy(() => import("../pages/Login"));
@@ -19,14 +20,15 @@ const PrivacyPolicy = lazy(() => import("../pages/PrivacyPolicy"));
 const TermsOfService = lazy(() => import("../pages/TermsOfService"));
 
 const Placeholder = ({ children }) => <main>{children}</main>;
+const GuestOnly = ({ children }) => <ProtectedRoute access={ACCESS.GUEST_ONLY}>{children}</ProtectedRoute>;
 
 export default function AppRouter() {
   return (
     <Routes>
       <Route path="/" element={<Home />} />
-      <Route path="/login" element={<Login />} />
-      <Route path="/signup" element={<Signup />} />
-      <Route path="/forgot-password" element={<ForgotPassword />} />
+      <Route path="/login" element={<GuestOnly><Login /></GuestOnly>} />
+      <Route path="/signup" element={<GuestOnly><Signup /></GuestOnly>} />
+      <Route path="/forgot-password" element={<GuestOnly><ForgotPassword /></GuestOnly>} />
       <Route path="/about" element={<About />} />
       <Route path="/how-it-works" element={<HowItWorks />} />
       <Route path="/blog" element={<Blog />} />
@@ -38,22 +40,8 @@ export default function AppRouter() {
       <Route path="/lost" element={<Placeholder>Lost Items Page - Coming Soon</Placeholder>} />
       <Route path="/found" element={<Placeholder>Found Items Page - Coming Soon</Placeholder>} />
       <Route path="/demo" element={<ReportDemo />} />
-      <Route
-        path="/dashboard"
-        element={
-          <ProtectedRoute>
-            <Dashboard />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/report"
-        element={
-          <ProtectedRoute>
-            <Report />
-          </ProtectedRoute>
-        }
-      />
+      <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
+      <Route path="/report" element={<ProtectedRoute><Report /></ProtectedRoute>} />
       <Route path="*" element={<Placeholder>404 - Page Not Found</Placeholder>} />
     </Routes>
   );
