@@ -3,7 +3,7 @@ import { Link, Navigate } from "react-router-dom";
 import { useForm } from "react-hook-form";
 import { basicUniversities, getCampusesForUniversity } from "../data/UniversityDomains";
 import { useAuth } from "../AuthContext/AuthContext";
-import { signUp } from "../features/auth/authService";
+import { resendConfirmation, signUp } from "../features/auth/authService";
 import { AUTH_SUCCESS_MESSAGES, getAuthErrorMessage } from "../features/auth/authMessages";
 import { consumeClientCooldown } from "../features/auth/clientCooldown";
 import { normalizeEmail, validateFullName, validatePassword, validateUniversityEmail } from "../features/auth/authValidation";
@@ -15,6 +15,7 @@ export default function Signup() {
   const [campuses, setCampuses] = useState([]);
   const [campusLoading, setCampusLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [resending, setResending] = useState(false);
   const [notice, setNotice] = useState(null);
   const [confirmationEmail, setConfirmationEmail] = useState("");
   const { register, handleSubmit, watch, formState: { errors } } = useForm({ mode: "onBlur" });
@@ -53,13 +54,33 @@ export default function Signup() {
     } finally { setSubmitting(false); }
   };
 
+  const handleResend = async () => {
+    const cooldown = consumeClientCooldown(`confirmation:${confirmationEmail}`, 60000);
+    if (!cooldown.allowed) {
+      setNotice({ type: "error", text: "Please wait about a minute before requesting another confirmation email." });
+      return;
+    }
+    setResending(true);
+    setNotice(null);
+    try {
+      await resendConfirmation(confirmationEmail);
+      setNotice({ type: "success", text: AUTH_SUCCESS_MESSAGES.confirmationResent });
+    } catch (error) {
+      const text = error?.code === "auth/reauth-required"
+        ? "For security, sign in again to request another confirmation email."
+        : getAuthErrorMessage(error, "signup");
+      setNotice({ type: "error", text });
+    } finally { setResending(false); }
+  };
+
   if (confirmationEmail) return (
     <main className="signup-main-container">
       <section className="signup-wrapper auth-confirmation" aria-live="polite">
         <div className="signup-header"><h1 className="signup-title">Check your university email</h1><p className="signup-subtitle">We sent a confirmation link to <strong>{confirmationEmail}</strong>.</p></div>
-        <div className="success-message" role="status">{notice?.text}</div>
-        <p>Open the email, confirm your address, then return here and sign in. Check spam or junk if it does not arrive shortly.</p>
+        {notice && <div className={notice.type === "success" ? "success-message" : "error-message"} role={notice.type === "error" ? "alert" : "status"}>{notice.text}</div>}
+        <p>Open the email, confirm your address, then sign in. Check spam or junk if it does not arrive shortly.</p>
         <Link className="login-btn" to="/login" state={{ email: confirmationEmail, reason: "confirmation-sent" }}>Continue to sign in</Link>
+        <button className="signup-btn" type="button" onClick={handleResend} disabled={resending}>{resending ? "Sending…" : "Resend confirmation email"}</button>
       </section>
     </main>
   );
