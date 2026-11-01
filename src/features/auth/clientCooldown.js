@@ -20,3 +20,16 @@ export function assertCooldownReady(key) {
     throw error;
   }
 }
+
+// Compatibility helper for auth screens that use millisecond cooldown durations.
+// This is UX protection only; provider/server-side rate limits remain authoritative.
+export function consumeClientCooldown(key, durationMs = 5000) {
+  const remaining = getCooldownRemaining(key);
+  if (remaining > 0) {
+    return { allowed: false, remainingSeconds: remaining };
+  }
+
+  const seconds = Math.max(1, Math.ceil((Number(durationMs) || 5000) / 1000));
+  startCooldown(key, seconds);
+  return { allowed: true, remainingSeconds: 0 };
+}
