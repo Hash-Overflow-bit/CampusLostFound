@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { getAuthBackend, AUTH_BACKENDS } from "../features/auth/authBackend";
-import { getSupabaseSession } from "../features/auth/supabaseAuthAdapter";
+import { getSupabaseSession, hasPasswordRecoveryIntent } from "../features/auth/supabaseAuthAdapter";
 import { setNewPassword } from "../features/auth/authService";
 import { getAuthErrorMessage } from "../features/auth/authMessages";
 import { validatePassword } from "../features/auth/authValidation";
@@ -31,8 +31,9 @@ export default function UpdatePassword() {
       try {
         const session = await getSupabaseSession();
         if (!active) return;
-        setRecoveryReady(Boolean(session?.user));
-        if (!session?.user) setNotice({ type: "error", text: "This password recovery link is invalid or has expired. Request a new one." });
+        const validRecovery = Boolean(session?.user) && hasPasswordRecoveryIntent();
+        setRecoveryReady(validRecovery);
+        if (!validRecovery) setNotice({ type: "error", text: "This password recovery link is invalid or has expired. Request a new one." });
       } catch {
         if (active) setNotice({ type: "error", text: "We could not verify this recovery link. Request a new one." });
       } finally {
@@ -54,6 +55,7 @@ export default function UpdatePassword() {
     setSubmitting(true);
     try {
       await setNewPassword(password);
+      setRecoveryReady(false);
       setNotice({ type: "success", text: "Your password has been updated. You can now sign in with your new password." });
       setTimeout(() => navigate("/login", { replace: true, state: { reason: "password-updated" } }), 1200);
     } catch (error) {
