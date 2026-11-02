@@ -1,12 +1,8 @@
 /* eslint-disable react-refresh/only-export-components */
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
-import { onAuthStateChanged, signOut } from "firebase/auth";
-import { auth } from "../firebaseConfig/firebaseCore";
-import { AUTH_BACKENDS, getAuthBackend } from "../features/auth/authBackend";
 import { getSupabaseSession, signOutSupabase, subscribeToSupabaseAuth } from "../features/auth/supabaseAuthAdapter";
 import { getCurrentProfile, onboardCurrentUserCampus } from "../features/auth/repositories/supabaseProfileRepository";
-import { normalizeFirebaseUser, normalizeSupabaseUser } from "../features/auth/sessionModel";
-import { ROLES } from "../app/routePolicy";
+import { normalizeSupabaseUser } from "../features/auth/sessionModel";
 
 const AuthContext = createContext(null);
 
@@ -14,7 +10,6 @@ export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
-  const backend = getAuthBackend();
 
   useEffect(() => {
     localStorage.removeItem("rememberedPassword");
@@ -29,6 +24,7 @@ export const AuthProvider = ({ children }) => {
         setLoading(false);
         return;
       }
+
       try {
         let trustedProfile = await getCurrentProfile();
         if (normalized.emailVerified && !trustedProfile?.campus_id) {
@@ -36,8 +32,6 @@ export const AuthProvider = ({ children }) => {
         }
         if (active) setProfile(trustedProfile);
       } catch (error) {
-        // Unsupported/unmapped university domains leave the user authenticated but without a
-        // trusted campus. Do not infer campus from signup metadata or elevate authorization.
         console.error("Profile/campus hydration error:", error);
         if (active) setProfile(null);
       } finally {
@@ -45,33 +39,25 @@ export const AuthProvider = ({ children }) => {
       }
     };
 
-    if (backend === AUTH_BACKENDS.SUPABASE) {
-      getSupabaseSession().then(applySupabaseSession).catch((error) => {
-        console.error("Supabase auth hydration error:", error);
-        if (active) { setUser(null); setProfile(null); setLoading(false); }
-      });
-      const unsubscribe = subscribeToSupabaseAuth(applySupabaseSession);
-      return () => { active = false; unsubscribe(); };
-    }
-
-    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
-      if (!active) return;
-      setUser(normalizeFirebaseUser(currentUser));
-      // Transitional V1 users have no trusted role store. Never elevate them client-side.
-      setProfile(currentUser ? { role: ROLES.STUDENT } : null);
-      setLoading(false);
-    }, (error) => {
-      console.error("Firebase auth state error:", error);
-      if (active) { setUser(null); setProfile(null); setLoading(false); }
+    getSupabaseSession().then(applySupabaseSession).catch((error) => {
+      console.error("Supabase auth hydration error:", error);
+      if (active) {
+        setUser(null);
+        setProfile(null);
+        setLoading(false);
+      }
     });
 
-    return () => { active = false; unsubscribe(); };
-  }, [backend]);
+    const unsubscribe = subscribeToSupabaseAuth(applySupabaseSession);
+    return () => {
+      active = false;
+      unsubscribe();
+    };
+  }, []);
 
   const logout = async () => {
     try {
-      if (backend === AUTH_BACKENDS.SUPABASE) await signOutSupabase();
-      else await signOut(auth);
+      await signOutSupabase();
       localStorage.removeItem("rememberedEmail");
       localStorage.removeItem("rememberedPassword");
       localStorage.removeItem("rememberMe");
@@ -87,13 +73,13 @@ export const AuthProvider = ({ children }) => {
     profile,
     role: profile?.role || null,
     campus: profile?.campuses || null,
-    backend,
+    backend: "supabase",
     isAuthenticated: Boolean(user),
     isEmailVerified: Boolean(user?.emailVerified),
     hasTrustedCampus: Boolean(profile?.campus_id),
     loading,
     logout,
-  }), [user, profile, loading, backend]);
+  }), [user, profile, loading]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };
