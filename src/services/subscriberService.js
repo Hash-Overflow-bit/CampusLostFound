@@ -1,14 +1,25 @@
-import { db } from "../firebaseConfig/firebaseCore";
-import { collection, addDoc, serverTimestamp } from "firebase/firestore";
+import { getSupabaseClient } from "../lib/supabase/client";
 
-// Save subscriber email for a university
 export const saveSubscriber = async (university, email) => {
   try {
-    const docRef = await addDoc(collection(db, `subscribers_${university}`), {
-      email,
-      subscribedAt: serverTimestamp(),
-    });
-    return { success: true, id: docRef.id };
+    const supabase = getSupabaseClient();
+    if (!supabase) throw new Error("Supabase is not configured.");
+
+    const normalizedUniversity = String(university || "").trim();
+    const normalizedEmail = String(email || "").trim().toLowerCase();
+    if (!normalizedUniversity || !normalizedEmail) throw new Error("University and email are required.");
+
+    const { data, error } = await supabase
+      .from("newsletter_subscribers")
+      .insert({ university: normalizedUniversity, email: normalizedEmail })
+      .select("id")
+      .single();
+
+    if (error) {
+      if (error.code === "23505") return { success: true, duplicate: true };
+      throw error;
+    }
+    return { success: true, id: data?.id };
   } catch (error) {
     return { success: false, error: error.message };
   }
