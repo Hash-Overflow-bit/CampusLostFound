@@ -1,7 +1,6 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 
-// https://vite.dev/config/
 export default defineConfig({
   plugins: [react()],
   build: {
@@ -11,7 +10,7 @@ export default defineConfig({
       output: {
         manualChunks: {
           vendor: ["react", "react-dom"],
-          firebase: ["firebase/app", "firebase/auth", "firebase/firestore"],
+          supabase: ["@supabase/supabase-js"],
           ui: ["react-router-dom", "react-hook-form", "react-helmet-async"],
           icons: ["react-icons/ci", "react-icons/go", "react-icons/io"],
         },
@@ -31,13 +30,6 @@ export default defineConfig({
     },
   },
   optimizeDeps: {
-    include: [
-      "react",
-      "react-dom",
-      "react-router-dom",
-      "firebase/app",
-      "firebase/auth",
-      "firebase/firestore",
-    ],
+    include: ["react", "react-dom", "react-router-dom", "@supabase/supabase-js"],
   },
 });
