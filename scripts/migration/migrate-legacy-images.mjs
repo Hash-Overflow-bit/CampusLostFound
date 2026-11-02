@@ -37,14 +37,13 @@ console.log('Legacy records with data images:', legacyWithImages.length);
 console.log('Ready records:', ready.length);
 
 let uploaded = 0;
+let alreadyMigrated = 0;
 let invalid = 0;
 let failed = 0;
 let unmatched = 0;
 let ambiguous = 0;
 
 for (const old of legacyWithImages) {
-  // items-ready.json does not contain the original Firestore document id.
-  // Match only when the migrated record is unique by stable migrated fields.
   let candidates = ready.filter((r) => normalized(r?.item?.title) === normalized(old.title));
 
   if (old.category && candidates.length > 1) {
@@ -84,12 +83,14 @@ for (const old of legacyWithImages) {
   const item = migrated.item;
   const path = `${item.owner_id}/${item.id}/legacy-0.${extensionFor(mime)}`;
 
-  const { data: existing, error: existingError } = await supabase
+  // Do not use maybeSingle here. Some PostgREST deployments return PGRST116
+  // when zero rows match. A limited array query works for both 0 and 1+ rows.
+  const { data: existingRows, error: existingError } = await supabase
     .from('item_images')
     .select('id, storage_path')
     .eq('item_id', item.id)
     .eq('position', 0)
-    .maybeSingle();
+    .limit(1);
 
   if (existingError) {
     console.error('Existing-row check failed:', old.title, existingError.message);
@@ -97,8 +98,9 @@ for (const old of legacyWithImages) {
     continue;
   }
 
-  if (existing) {
+  if (existingRows?.length) {
     console.log('Already migrated:', old.title);
+    alreadyMigrated++;
     continue;
   }
 
@@ -131,12 +133,13 @@ for (const old of legacyWithImages) {
 }
 
 console.log('\nImages migrated:', uploaded);
+console.log('Already migrated:', alreadyMigrated);
 console.log('Unmatched image records:', unmatched);
 console.log('Ambiguous image records:', ambiguous);
 console.log('Invalid images skipped:', invalid);
 console.log('Failed:', failed);
 
-if (legacyWithImages.length > 0 && uploaded === 0) {
+if (legacyWithImages.length > 0 && uploaded === 0 && alreadyMigrated === 0) {
   console.error('\nNo images were migrated. Do not delete Firebase data.');
   process.exitCode = 2;
 }
