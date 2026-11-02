@@ -1,0 +1,23 @@
+.clf-logo-loop {
+  height: 148px;
+  border-top: 0 !important;
+  border-bottom: 0 !important;
+}
+
+.clf-skeleton-marquee {
+  --logoloop-logoHeight: 66px !important;
+}
+
+.clf-skeleton-marquee .logoloop__item img {
+  max-width: 150px;
+}
+
+@media (max-width: 650px) {
+  .clf-logo-loop {
+    height: 126px;
+  }
+
+  .clf-skeleton-marquee {
+    --logoloop-logoHeight: 56px !important;
+  }
+}
