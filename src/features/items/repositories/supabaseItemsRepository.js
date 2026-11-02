@@ -12,13 +12,13 @@ export async function listItems({ campusId, type, ownerId, cursor, pageSize = PA
   const supabase = requireClient();
   let query = supabase
     .from("items")
-    .select("id, owner_id, campus_id, type, status, title, category, description, public_location, occurred_at, color, brand, created_at, item_images(id, storage_path, sort_order)")
+    .select("id, owner_id, campus_id, kind, status, title, category, description, public_location, occurred_at, color, brand, created_at, item_images(id, storage_path, position)")
     .eq("campus_id", campusId)
     .eq("status", "open")
     .order("created_at", { ascending: false })
     .limit(pageSize);
 
-  if (type) query = query.eq("type", type);
+  if (type) query = query.eq("kind", type);
   if (ownerId) query = query.eq("owner_id", ownerId);
   if (cursor) query = query.lt("created_at", cursor);
 
