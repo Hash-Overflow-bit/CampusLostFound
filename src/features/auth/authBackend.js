@@ -6,7 +6,9 @@ export const AUTH_BACKENDS = Object.freeze({
 export function getAuthBackend() {
   const configured = import.meta.env.VITE_AUTH_BACKEND?.trim().toLowerCase();
 
-  if (!configured) return AUTH_BACKENDS.FIREBASE;
+  // V2 is Supabase-first. Keep the Firebase option only as a temporary explicit rollback path
+  // while final cutover verification is in progress.
+  if (!configured) return AUTH_BACKENDS.SUPABASE;
 
   if (!Object.values(AUTH_BACKENDS).includes(configured)) {
     throw new Error(`Unsupported VITE_AUTH_BACKEND: ${configured}`);
