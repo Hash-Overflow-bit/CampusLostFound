@@ -20,38 +20,43 @@ export default function Navbar() {
   };
 
   return (
-    <nav className="navbar navbar-expand-lg navbar-light bg-light">
-      <div className="container-fluid">
-        <Link className="navbar-brand" to="/" onClick={closeNavbar}>Campus<span className="sub-logo">LostFound</span></Link>
-        <button className="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarContent" aria-controls="navbarContent" aria-expanded="false" aria-label="Toggle navigation"><span className="navbar-toggler-icon" /></button>
+    <nav className="campus-nav navbar navbar-expand-lg">
+      <div className="container-fluid campus-nav-inner">
+        <Link className="campus-brand" to="/" onClick={closeNavbar} aria-label="Campus Lost Found home">
+          <span className="campus-brand-mark">C</span>
+          <span className="campus-brand-copy">Campus<span>LostFound</span></span>
+        </Link>
+
+        <button className="navbar-toggler campus-menu-toggle" type="button" data-bs-toggle="collapse" data-bs-target="#navbarContent" aria-controls="navbarContent" aria-expanded="false" aria-label="Toggle navigation">
+          <span></span><span></span><span></span>
+        </button>
+
         <div className="collapse navbar-collapse" id="navbarContent">
-          <div className="navbar-nav mx-auto">
+          <div className="navbar-nav campus-nav-links mx-auto">
             <NavLink className="nav-link" to="/" onClick={closeNavbar}>Home</NavLink>
+            <NavLink className="nav-link" to="/how-it-works" onClick={closeNavbar}>How it works</NavLink>
+            <NavLink className="nav-link" to="/universities" onClick={closeNavbar}>Campuses</NavLink>
             <NavLink className="nav-link" to="/about" onClick={closeNavbar}>About</NavLink>
-            <NavLink className="nav-link" to="/how-it-works" onClick={closeNavbar}>How It Works</NavLink>
-            <NavLink className="nav-link" to="/universities" onClick={closeNavbar}>Universities</NavLink>
-            <NavLink className="nav-link" to="/blog" onClick={closeNavbar}>Blog</NavLink>
-            <NavLink className="nav-link" to="/contact" onClick={closeNavbar}>Contact</NavLink>
           </div>
-          <div className="d-flex align-items-center">
-            {user && <Link to="/report" className="btn btn-primary me-3 report-btn" onClick={closeNavbar}>Report Item</Link>}
+
+          <div className="campus-nav-actions">
             {user ? (
-              <div className="nav-item dropdown">
-                <button className="nav-link dropdown-toggle border-0 bg-transparent" type="button" data-bs-toggle="dropdown" aria-expanded="false">Account</button>
-                <ul className="dropdown-menu dropdown-menu-end">
-                  <li><span className="dropdown-item-text">{user.email}</span></li>
-                  <li><hr className="dropdown-divider" /></li>
-                  <li><Link className="dropdown-item" to="/dashboard" onClick={closeNavbar}>Dashboard</Link></li>
-                  <li><Link className="dropdown-item" to="/privacy-policy" onClick={closeNavbar}>Privacy Policy</Link></li>
-                  <li><Link className="dropdown-item" to="/terms-of-service" onClick={closeNavbar}>Terms of Service</Link></li>
-                  <li><button className="dropdown-item" type="button" onClick={handleLogout}>Logout</button></li>
-                </ul>
-              </div>
+              <>
+                <Link to="/report" className="campus-nav-report" onClick={closeNavbar}>Report item <span>↗</span></Link>
+                <div className="nav-item dropdown">
+                  <button className="campus-account-button dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">Account</button>
+                  <ul className="dropdown-menu dropdown-menu-end campus-dropdown">
+                    <li><span className="dropdown-item-text campus-account-email">{user.email}</span></li>
+                    <li><Link className="dropdown-item" to="/dashboard" onClick={closeNavbar}>Dashboard</Link></li>
+                    <li><button className="dropdown-item" type="button" onClick={handleLogout}>Log out</button></li>
+                  </ul>
+                </div>
+              </>
             ) : (
-              <div className="d-flex authenticate-user">
-                <Link to="/login" className="btn btn-outline-primary me-2" onClick={closeNavbar}>Login</Link>
-                <Link to="/signup" className="btn btn-primary" onClick={closeNavbar}>Signup</Link>
-              </div>
+              <>
+                <Link to="/login" className="campus-login-link" onClick={closeNavbar}>Log in</Link>
+                <Link to="/signup" className="campus-nav-report" onClick={closeNavbar}>Join campus <span>↗</span></Link>
+              </>
             )}
           </div>
         </div>
