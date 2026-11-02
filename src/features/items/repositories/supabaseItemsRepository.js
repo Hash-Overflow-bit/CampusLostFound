@@ -53,6 +53,24 @@ export async function listItems({ campusId, type, ownerId, cursor, pageSize = IT
   };
 }
 
+export async function getOwnedItemStats(ownerId) {
+  if (!ownerId) return { total: 0, found: 0, lost: 0 };
+  const supabase = requireClient();
+  const { data, error } = await supabase
+    .from("items")
+    .select("kind")
+    .eq("owner_id", ownerId)
+    .neq("status", "closed");
+  if (error) throw error;
+
+  return (data ?? []).reduce((stats, item) => {
+    stats.total += 1;
+    if (item.kind === "found") stats.found += 1;
+    if (item.kind === "lost") stats.lost += 1;
+    return stats;
+  }, { total: 0, found: 0, lost: 0 });
+}
+
 export async function updateOwnedItem(itemId, patch) {
   const supabase = requireClient();
   const { data, error } = await supabase
