@@ -1,5 +1,6 @@
 import { Link } from "react-router-dom";
 import "./AuthShell.css";
+import "./AuthShellPatch.css";
 
 export default function AuthShell({
   eyebrow = "Campus Lost Found",
