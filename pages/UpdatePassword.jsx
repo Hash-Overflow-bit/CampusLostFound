@@ -7,7 +7,7 @@ import { getAuthErrorMessage } from "../features/auth/authMessages";
 import { validatePassword } from "../features/auth/authValidation";
 import { consumeClientCooldown } from "../features/auth/clientCooldown";
 import SEO from "../componenets/seo/SEO";
-import "./Login.css";
+import AuthShell from "../components/auth/AuthShell";
 
 export default function UpdatePassword() {
   const navigate = useNavigate();
@@ -63,5 +63,36 @@ export default function UpdatePassword() {
     } finally { setSubmitting(false); }
   };
 
-  return <><SEO title="Update password | Campus Lost Found" description="Securely update your Campus Lost Found password." url="https://campuslostfound.vercel.app/update-password" links={[{ rel: "canonical", href: "https://campuslostfound.vercel.app/update-password" }]} /><main className="login-main-container"><div className="login-wrapper"><div className="login-header"><h1 className="login-title">Choose a new password</h1><p className="login-subtitle">Use a strong password you do not reuse elsewhere.</p></div>{checking ? <p role="status">Checking recovery link…</p> : <form className="login-form" onSubmit={submit} noValidate><div className="form-group"><label className="form-label" htmlFor="newPassword">New password</label><input id="newPassword" className="form-control" type="password" autoComplete="new-password" value={password} onChange={(event) => setPassword(event.target.value)} disabled={!recoveryReady || submitting} /><small>Use 10+ characters with uppercase, lowercase and a number.</small></div><div className="form-group"><label className="form-label" htmlFor="confirmNewPassword">Confirm new password</label><input id="confirmNewPassword" className="form-control" type="password" autoComplete="new-password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} disabled={!recoveryReady || submitting} /></div>{notice && <div className={notice.type === "success" ? "success-message" : "error-message"} role={notice.type === "error" ? "alert" : "status"}>{notice.text}</div>}{recoveryReady && <button className="login-btn" type="submit" disabled={submitting}>{submitting ? "Updating password…" : "Update password"}</button>}{!recoveryReady && <p><Link to="/forgot-password">Request a new reset link</Link></p>}</form>}</div></main></>;
+  return (
+    <>
+      <SEO title="Update password | Campus Lost Found" description="Securely update your Campus Lost Found password." url="https://campuslostfound.vercel.app/update-password" links={[{ rel: "canonical", href: "https://campuslostfound.vercel.app/update-password" }]} />
+      <AuthShell
+        eyebrow="Secure recovery"
+        title="Choose a new password."
+        subtitle="Use a strong password you don’t reuse elsewhere. Once updated, you’ll return to sign in."
+        sideTitle={"A fresh password.\nSame campus network."}
+      >
+        {checking ? (
+          <div className="auth-status-line" role="status"><span className="auth-spinner" /> Checking recovery link…</div>
+        ) : (
+          <form className="auth-form" onSubmit={submit} noValidate>
+            <div className="auth-field">
+              <label htmlFor="newPassword">New password</label>
+              <input id="newPassword" className="auth-input" type="password" autoComplete="new-password" value={password} onChange={(event) => setPassword(event.target.value)} disabled={!recoveryReady || submitting} placeholder="Create a new password" />
+              <span className="auth-help">Use 10+ characters with uppercase, lowercase and a number.</span>
+            </div>
+
+            <div className="auth-field">
+              <label htmlFor="confirmNewPassword">Confirm new password</label>
+              <input id="confirmNewPassword" className="auth-input" type="password" autoComplete="new-password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} disabled={!recoveryReady || submitting} placeholder="Repeat your new password" />
+            </div>
+
+            {notice && <div className={`auth-notice auth-notice--${notice.type}`} role={notice.type === "error" ? "alert" : "status"}>{notice.text}</div>}
+            {recoveryReady && <button className="auth-submit" type="submit" disabled={submitting}>{submitting ? "Updating password…" : "Update password →"}</button>}
+            {!recoveryReady && <p className="auth-switch"><Link className="auth-link" to="/forgot-password">Request a new reset link</Link></p>}
+          </form>
+        )}
+      </AuthShell>
+    </>
+  );
 }
