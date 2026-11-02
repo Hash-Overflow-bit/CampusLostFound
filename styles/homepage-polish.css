@@ -1,0 +1,85 @@
+/* Homepage-specific finishing touches for the V2 redesign. */
+
+/* The homepage navbar should float directly over the green hero. Other routes keep their normal navbar treatment. */
+.app-shell:has(.clf-home) .campus-nav {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  background: transparent !important;
+  border-bottom: 0 !important;
+  box-shadow: none !important;
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+}
+
+/* Remove the hero community badge completely. */
+.clf-hero .clf-eyebrow {
+  display: none !important;
+}
+
+/* Give the headline enough breathing room and keep the red accent under only the final word "help". */
+.clf-hero h1 {
+  line-height: 1.04 !important;
+}
+
+.clf-hero h1 span::after {
+  left: auto !important;
+  right: 0 !important;
+  width: 22% !important;
+  height: 7px !important;
+  bottom: -2px !important;
+  border-radius: 999px !important;
+  transform: rotate(-1.5deg) !important;
+}
+
+/* Scroll-reveal motion. Classes are added by utils/scrollReveal.js. */
+.clf-reveal {
+  opacity: 0;
+  transform: translateY(38px) scale(.992);
+  filter: blur(4px);
+  transition:
+    opacity .72s cubic-bezier(.2,.7,.2,1),
+    transform .8s cubic-bezier(.2,.7,.2,1),
+    filter .72s ease;
+  will-change: opacity, transform;
+}
+
+.clf-reveal.is-visible {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  filter: blur(0);
+}
+
+/* A little variation keeps consecutive sections from feeling mechanically identical. */
+.clf-reveal:nth-of-type(even) {
+  transform: translateY(34px) scale(.995);
+}
+
+.clf-reveal:nth-of-type(even).is-visible {
+  transform: translateY(0) scale(1);
+}
+
+@media (max-width: 900px) {
+  .clf-hero h1 {
+    line-height: 1.02 !important;
+  }
+
+  .clf-hero h1 span::after {
+    width: 24% !important;
+    height: 5px !important;
+    bottom: -1px !important;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .clf-reveal,
+  .clf-reveal:nth-of-type(even),
+  .clf-reveal.is-visible,
+  .clf-reveal:nth-of-type(even).is-visible {
+    opacity: 1 !important;
+    transform: none !important;
+    filter: none !important;
+    transition: none !important;
+  }
+}
