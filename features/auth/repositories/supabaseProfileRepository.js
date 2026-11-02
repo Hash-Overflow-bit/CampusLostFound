@@ -1,4 +1,5 @@
 import { getSupabaseClient } from "../../../lib/supabase/client";
+import { clearProfileCache, readProfileCache, writeProfileCache } from "../profileCache";
 
 function requireClient() {
   const client = getSupabaseClient();
@@ -7,35 +8,62 @@ function requireClient() {
 }
 
 const PROFILE_SELECT = "id, campus_id, display_name, role, verified_at, campuses(id, name, slug, email_domain)";
+const inFlightProfileRequests = new Map();
 
-export async function getCurrentProfile() {
-  const client = requireClient();
+async function resolveUserId(client, explicitUserId) {
+  if (explicitUserId) return explicitUserId;
   const { data: userData, error: userError } = await client.auth.getUser();
   if (userError) throw userError;
-  if (!userData.user) return null;
+  return userData.user?.id || null;
+}
 
-  const { data, error } = await client
+export async function getCurrentProfile({ userId, force = false } = {}) {
+  const client = requireClient();
+  const resolvedUserId = await resolveUserId(client, userId);
+  if (!resolvedUserId) return null;
+
+  if (!force) {
+    const cached = readProfileCache(resolvedUserId);
+    if (cached?.isFresh) return cached.profile;
+  }
+
+  if (inFlightProfileRequests.has(resolvedUserId)) {
+    return inFlightProfileRequests.get(resolvedUserId);
+  }
+
+  const request = client
     .from("profiles")
     .select(PROFILE_SELECT)
-    .eq("id", userData.user.id)
-    .maybeSingle();
+    .eq("id", resolvedUserId)
+    .maybeSingle()
+    .then(({ data, error }) => {
+      if (error) throw error;
+      if (data) writeProfileCache(resolvedUserId, data);
+      return data;
+    })
+    .finally(() => {
+      inFlightProfileRequests.delete(resolvedUserId);
+    });
 
-  if (error) throw error;
-  return data;
+  inFlightProfileRequests.set(resolvedUserId, request);
+  return request;
 }
 
-export async function onboardCurrentUserCampus() {
+export async function onboardCurrentUserCampus({ userId } = {}) {
   const client = requireClient();
+  const resolvedUserId = await resolveUserId(client, userId);
+  if (!resolvedUserId) throw new Error("Authentication required");
+
   const { error } = await client.rpc("onboard_my_campus");
   if (error) throw error;
-  return getCurrentProfile();
+  clearProfileCache(resolvedUserId);
+  return getCurrentProfile({ userId: resolvedUserId, force: true });
 }
 
-export async function updateCurrentProfile(patch) {
+export async function updateCurrentProfile(patch, { userId } = {}) {
   const client = requireClient();
-  const { data: userData, error: userError } = await client.auth.getUser();
-  if (userError) throw userError;
-  if (!userData.user) throw new Error("Authentication required");
+  const resolvedUserId = await resolveUserId(client, userId);
+  if (!resolvedUserId) throw new Error("Authentication required");
 
   // Browser clients may edit presentation data only. Role, campus assignment and verification
   // state are trusted authorization fields and are intentionally excluded.
@@ -43,15 +71,16 @@ export async function updateCurrentProfile(patch) {
     Object.entries({ display_name: patch.display_name }).filter(([, value]) => value !== undefined)
   );
 
-  if (!Object.keys(values).length) return getCurrentProfile();
+  if (!Object.keys(values).length) return getCurrentProfile({ userId: resolvedUserId });
 
   const { data, error } = await client
     .from("profiles")
     .update(values)
-    .eq("id", userData.user.id)
+    .eq("id", resolvedUserId)
     .select(PROFILE_SELECT)
     .single();
 
   if (error) throw error;
+  writeProfileCache(resolvedUserId, data);
   return data;
 }
