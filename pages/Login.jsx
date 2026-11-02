@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import "./Login.css";
 import { isValidDomain } from "../data/UniversityDomains";
 import { useAuth } from "../AuthContext/AuthContext";
 import { getSafeReturnPath } from "../app/routePolicy";
@@ -9,6 +8,7 @@ import { signIn } from "../features/auth/authService";
 import { getAuthErrorMessage } from "../features/auth/authMessages";
 import { assertCooldownReady, startCooldown } from "../features/auth/clientCooldown";
 import SEO from "../componenets/seo/SEO";
+import AuthShell from "../components/auth/AuthShell";
 
 const Login = React.memo(() => {
   const [showPassword, setShowPassword] = useState(false);
@@ -29,12 +29,17 @@ const Login = React.memo(() => {
 
   useEffect(() => {
     localStorage.removeItem("rememberedPassword");
+    const stateEmail = location.state?.email;
     const storedEmail = localStorage.getItem("rememberedEmail");
-    if (storedEmail && localStorage.getItem("rememberMe") === "true") {
+    if (stateEmail) {
+      setValue("email", stateEmail);
+    } else if (storedEmail && localStorage.getItem("rememberMe") === "true") {
       setValue("email", storedEmail);
       setValue("rememberMe", true);
     }
     if (location.state?.reason === "verify") setFormMessage("Confirm your university email before accessing that page.");
+    if (location.state?.reason === "password-updated") setFormMessage("Password updated. Sign in with your new password.");
+    if (location.state?.reason === "confirmation-sent") setFormMessage("Email confirmed? Sign in below to enter your campus network.");
   }, [location.state, setValue]);
 
   useEffect(() => {
@@ -78,35 +83,40 @@ const Login = React.memo(() => {
 
   return (
     <>
-      <SEO title="Login to Campus Lost Found Pakistan" description="Sign in with your verified university account to access protected Campus Lost Found features." url="https://campuslostfound.vercel.app/login" image="/src/assets/logo.png" type="website" siteName="Campus Lost Found Pakistan - Login" author="Campus Lost Found Team" links={[{ rel: "canonical", href: "https://campuslostfound.vercel.app/login" }]} customMeta={[{ name: "page-type", content: "authentication-login" }]} />
-      <main className="login-main-container">
-        <div className="login-wrapper">
-          <div className="login-header"><h1 className="login-title">Welcome back</h1><p className="login-subtitle">Sign in securely with your university account</p></div>
-          <form className="login-form" onSubmit={handleSubmit(onSubmit)} noValidate>
-            <div className="form-group">
-              <label htmlFor="email" className="form-label">University email</label>
-              <input id="email" type="email" autoComplete="email" className={`form-control ${errors.email ? "error" : ""}`} placeholder="you@university.edu.pk" disabled={loading} {...register("email", { required: "Email address is required", pattern: { value: emailPattern, message: "Enter a valid email address" }, validate: value => validateUniversityDomain(value) || "Use your registered university email address." })} />
-              {errors.email && <div className="error-message" role="alert">{errors.email.message}</div>}
+      <SEO title="Login to Campus Lost Found Pakistan" description="Sign in with your verified university account to access protected Campus Lost Found features." url="https://campuslostfound.vercel.app/login" type="website" siteName="Campus Lost Found Pakistan - Login" author="Campus Lost Found Team" links={[{ rel: "canonical", href: "https://campuslostfound.vercel.app/login" }]} customMeta={[{ name: "page-type", content: "authentication-login" }]} />
+      <AuthShell
+        eyebrow="Welcome back"
+        title="Sign in to your campus."
+        subtitle="Use your verified university account to see reports, matches and recovery activity from your campus."
+      >
+        <form className="auth-form" onSubmit={handleSubmit(onSubmit)} noValidate>
+          <div className="auth-field">
+            <label htmlFor="email">University email</label>
+            <input id="email" type="email" autoComplete="email" className={`auth-input ${errors.email ? "is-error" : ""}`} placeholder="you@university.edu.pk" disabled={loading} {...register("email", { required: "Email address is required", pattern: { value: emailPattern, message: "Enter a valid email address" }, validate: value => validateUniversityDomain(value) || "Use your registered university email address." })} />
+            {errors.email && <span className="auth-error" role="alert">{errors.email.message}</span>}
+          </div>
+
+          <div className="auth-field">
+            <label htmlFor="password">Password</label>
+            <div className="auth-password-wrap">
+              <input id="password" type={showPassword ? "text" : "password"} autoComplete="current-password" className={`auth-input ${errors.password ? "is-error" : ""}`} placeholder="Enter your password" disabled={loading} {...register("password", { required: "Password is required" })} />
+              <button type="button" className="auth-password-toggle" onClick={() => setShowPassword(value => !value)} aria-label={showPassword ? "Hide password" : "Show password"}>{showPassword ? "Hide" : "Show"}</button>
             </div>
-            <div className="form-group">
-              <label htmlFor="password" className="form-label">Password</label>
-              <div className="password-field">
-                <input id="password" type={showPassword ? "text" : "password"} autoComplete="current-password" className={`form-control ${errors.password ? "error" : ""}`} placeholder="Enter your password" disabled={loading} {...register("password", { required: "Password is required" })} />
-                <button type="button" className="password-toggle" onClick={() => setShowPassword(value => !value)} aria-label={showPassword ? "Hide password" : "Show password"}>{showPassword ? "Hide" : "Show"}</button>
-              </div>
-              {errors.password && <div className="error-message" role="alert">{errors.password.message}</div>}
-            </div>
-            {formMessage && <div className="auth-message auth-message--info" role="status">{formMessage}</div>}
-            {formError && <div className="auth-message auth-message--error" role="alert">{formError}</div>}
-            <div className="form-options">
-              <div className="remember-me"><input type="checkbox" id="rememberMe" {...register("rememberMe")} /><label htmlFor="rememberMe">Remember my email</label></div>
-              <Link to="/forgot-password" className="forgot-password">Forgot password?</Link>
-            </div>
-            <button type="submit" className="login-btn" disabled={loading}>{loading ? "Signing in..." : "Sign in"}</button>
-            <div className="signup-link"><p>New here? <Link to="/signup">Create an account</Link></p></div>
-          </form>
-        </div>
-      </main>
+            {errors.password && <span className="auth-error" role="alert">{errors.password.message}</span>}
+          </div>
+
+          {formMessage && <div className="auth-notice auth-notice--info" role="status">{formMessage}</div>}
+          {formError && <div className="auth-notice auth-notice--error" role="alert">{formError}</div>}
+
+          <div className="auth-row">
+            <label className="auth-check" htmlFor="rememberMe"><input type="checkbox" id="rememberMe" {...register("rememberMe")} /> Remember my email</label>
+            <Link to="/forgot-password" className="auth-link">Forgot password?</Link>
+          </div>
+
+          <button type="submit" className="auth-submit" disabled={loading}>{loading ? "Signing in…" : "Sign in →"}</button>
+          <p className="auth-switch">New here? <Link className="auth-link" to="/signup">Create an account</Link></p>
+        </form>
+      </AuthShell>
     </>
   );
 });
