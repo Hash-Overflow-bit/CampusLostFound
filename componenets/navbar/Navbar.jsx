@@ -1,14 +1,17 @@
+import { useState } from "react";
 import { Link, NavLink } from "react-router-dom";
 import { useAuth } from "../../AuthContext/AuthContext";
 import "./Navbar.css";
 
-const closeNavbar = () => {
-  const navbarCollapse = document.getElementById("navbarContent");
-  if (navbarCollapse?.classList.contains("show")) navbarCollapse.classList.remove("show");
-};
-
 export default function Navbar() {
   const { user, logout } = useAuth();
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [accountOpen, setAccountOpen] = useState(false);
+
+  const closeNavbar = () => {
+    setMenuOpen(false);
+    setAccountOpen(false);
+  };
 
   const handleLogout = async () => {
     try {
@@ -20,36 +23,52 @@ export default function Navbar() {
   };
 
   return (
-    <nav className="campus-nav navbar navbar-expand-lg">
-      <div className="container-fluid campus-nav-inner">
+    <nav className="campus-nav" aria-label="Primary navigation">
+      <div className="campus-nav-inner">
         <Link className="campus-brand" to="/" onClick={closeNavbar} aria-label="Campus Lost Found home">
           <span className="campus-brand-mark">C</span>
           <span className="campus-brand-copy">Campus<span>LostFound</span></span>
         </Link>
 
-        <button className="navbar-toggler campus-menu-toggle" type="button" data-bs-toggle="collapse" data-bs-target="#navbarContent" aria-controls="navbarContent" aria-expanded="false" aria-label="Toggle navigation">
+        <button
+          className={`campus-menu-toggle${menuOpen ? " is-open" : ""}`}
+          type="button"
+          onClick={() => setMenuOpen((open) => !open)}
+          aria-controls="campusNavMenu"
+          aria-expanded={menuOpen}
+          aria-label="Toggle navigation"
+        >
           <span></span><span></span><span></span>
         </button>
 
-        <div className="collapse navbar-collapse" id="navbarContent">
-          <div className="navbar-nav campus-nav-links mx-auto">
-            <NavLink className="nav-link" to="/" onClick={closeNavbar}>Home</NavLink>
-            <NavLink className="nav-link" to="/how-it-works" onClick={closeNavbar}>How it works</NavLink>
-            <NavLink className="nav-link" to="/universities" onClick={closeNavbar}>Campuses</NavLink>
-            <NavLink className="nav-link" to="/about" onClick={closeNavbar}>About</NavLink>
+        <div id="campusNavMenu" className={`campus-nav-menu${menuOpen ? " is-open" : ""}`}>
+          <div className="campus-nav-links">
+            <NavLink className="campus-nav-link" to="/" onClick={closeNavbar}>Home</NavLink>
+            <NavLink className="campus-nav-link" to="/how-it-works" onClick={closeNavbar}>How it works</NavLink>
+            <NavLink className="campus-nav-link" to="/universities" onClick={closeNavbar}>Campuses</NavLink>
+            <NavLink className="campus-nav-link" to="/about" onClick={closeNavbar}>About</NavLink>
           </div>
 
           <div className="campus-nav-actions">
             {user ? (
               <>
                 <Link to="/report" className="campus-nav-report" onClick={closeNavbar}>Report item <span>↗</span></Link>
-                <div className="nav-item dropdown">
-                  <button className="campus-account-button dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">Account</button>
-                  <ul className="dropdown-menu dropdown-menu-end campus-dropdown">
-                    <li><span className="dropdown-item-text campus-account-email">{user.email}</span></li>
-                    <li><Link className="dropdown-item" to="/dashboard" onClick={closeNavbar}>Dashboard</Link></li>
-                    <li><button className="dropdown-item" type="button" onClick={handleLogout}>Log out</button></li>
-                  </ul>
+                <div className="campus-account-wrap">
+                  <button
+                    className="campus-account-button"
+                    type="button"
+                    onClick={() => setAccountOpen((open) => !open)}
+                    aria-expanded={accountOpen}
+                  >
+                    Account <span aria-hidden="true">⌄</span>
+                  </button>
+                  {accountOpen && (
+                    <div className="campus-dropdown" role="menu">
+                      <span className="campus-account-email">{user.email}</span>
+                      <Link className="campus-dropdown-item" to="/dashboard" onClick={closeNavbar}>Dashboard</Link>
+                      <button className="campus-dropdown-item" type="button" onClick={handleLogout}>Log out</button>
+                    </div>
+                  )}
                 </div>
               </>
             ) : (
