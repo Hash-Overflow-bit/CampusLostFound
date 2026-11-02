@@ -4,7 +4,7 @@ import { useLocation } from "react-router-dom";
 const Navbar = lazy(() => import("../../componenets/navbar/Navbar"));
 const Footer = lazy(() => import("../../componenets/footer/Footer"));
 
-const CHROMELESS_ROUTES = new Set(["/login", "/signup"]);
+const CHROMELESS_ROUTES = new Set(["/login", "/signup", "/forgot-password", "/update-password"]);
 
 export default function AppShell({ children }) {
   const { pathname } = useLocation();
