@@ -2,21 +2,41 @@ import { useCallback, useState } from "react";
 import { useAuth } from "../AuthContext/AuthContext";
 import SEO from "../componenets/seo/SEO";
 import ReportFlow from "../features/reports/components/ReportFlow";
-import { getUniversityFromEmail } from "../features/reports/reportModel";
-import { firebaseReportRepository } from "../features/reports/repositories/firebaseReportRepository";
+import { createReport } from "../features/reports/repositories/supabaseReportRepository";
 import "./Report.css";
 
 export default function Report() {
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
   const [completed, setCompleted] = useState(false);
 
   const submitReport = useCallback(async (report) => {
-    const university = getUniversityFromEmail(user?.email);
-    if (!user?.uid || !university) throw new Error("A verified university account is required.");
+    if (!user?.id || !profile?.campus_id) {
+      throw new Error("A verified university account with a trusted campus is required.");
+    }
 
-    await firebaseReportRepository.create({ report, userId: user.uid, university });
+    const occurredAt = report.date ? new Date(report.date).toISOString() : null;
+    await createReport({
+      item: {
+        owner_id: user.id,
+        campus_id: profile.campus_id,
+        kind: report.role,
+        status: "open",
+        title: report.title,
+        category: report.category,
+        description: report.description || null,
+        public_location: report.location || null,
+        occurred_at: occurredAt,
+      },
+      privateDetails: {
+        exact_location: null,
+        identifying_details: null,
+        contact_email: report.email || user.email || null,
+        contact_phone: report.phone || null,
+      },
+      image: report.image || null,
+    });
     setCompleted(true);
-  }, [user]);
+  }, [user, profile]);
 
   return <>
     <SEO title="Report Lost or Found Item | Campus Lost Found" description="Report a lost or found item at your university and help your campus community recover belongings safely." url={`${window.location.origin}/report`} />
