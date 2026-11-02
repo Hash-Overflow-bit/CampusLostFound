@@ -46,12 +46,25 @@ const timeSimilarity = (leftDate, rightDate, windowDays = 14) => {
 
 export const calculateMatchScore = (lostItem, foundItem) => {
   if (!lostItem || !foundItem) return { score: 0, components: {} };
-  if (lostItem.type === foundItem.type) return { score: 0, components: {} };
+
+  // Supabase uses `kind` (`lost` | `found`). A valid candidate pair must be opposite kinds.
+  if (!lostItem.kind || !foundItem.kind || lostItem.kind === foundItem.kind) {
+    return { score: 0, components: {} };
+  }
+
+  // Never match items across campuses.
+  if (
+    lostItem.campus_id &&
+    foundItem.campus_id &&
+    lostItem.campus_id !== foundItem.campus_id
+  ) {
+    return { score: 0, components: {} };
+  }
 
   const components = {
     category: exactSimilarity(lostItem.category, foundItem.category),
-    location: tokenSimilarity(lostItem.location, foundItem.location),
-    time: timeSimilarity(lostItem.eventDate ?? lostItem.date, foundItem.eventDate ?? foundItem.date),
+    location: tokenSimilarity(lostItem.public_location, foundItem.public_location),
+    time: timeSimilarity(lostItem.occurred_at, foundItem.occurred_at),
     title: tokenSimilarity(lostItem.title, foundItem.title),
     color: exactSimilarity(lostItem.color, foundItem.color),
     brand: exactSimilarity(lostItem.brand, foundItem.brand),
@@ -69,7 +82,7 @@ export const calculateMatchScore = (lostItem, foundItem) => {
   });
 
   const score = available ? Math.round((earned / available) * 100) : 0;
-  return { score, components, algorithmVersion: "v1-deterministic" };
+  return { score, components, algorithmVersion: "v2-supabase-deterministic" };
 };
 
 export const getMatchBand = (score) => {
