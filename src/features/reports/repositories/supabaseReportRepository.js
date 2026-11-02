@@ -1,4 +1,5 @@
 import { getSupabaseClient } from "../../../lib/supabase/client";
+import { uploadItemImage, removeItemImage } from "../services/supabaseImageService";
 
 function requireClient() {
   const client = getSupabaseClient();
@@ -6,7 +7,7 @@ function requireClient() {
   return client;
 }
 
-export async function createReport({ item, privateDetails }) {
+export async function createReport({ item, privateDetails, image }) {
   const supabase = requireClient();
   const { data: created, error } = await supabase
     .from("items")
@@ -18,9 +19,31 @@ export async function createReport({ item, privateDetails }) {
   if (privateDetails && Object.values(privateDetails).some(Boolean)) {
     const { error: privateError } = await supabase.from("item_private_details").insert({
       item_id: created.id,
+      owner_id: created.owner_id,
       ...privateDetails,
     });
     if (privateError) throw privateError;
+  }
+
+  if (image) {
+    let storagePath = null;
+    try {
+      storagePath = await uploadItemImage({
+        userId: created.owner_id,
+        itemId: created.id,
+        file: image,
+      });
+      const { error: imageError } = await supabase.from("item_images").insert({
+        item_id: created.id,
+        owner_id: created.owner_id,
+        storage_path: storagePath,
+        position: 0,
+      });
+      if (imageError) throw imageError;
+    } catch (imageError) {
+      if (storagePath) await removeItemImage(storagePath).catch(() => {});
+      throw imageError;
+    }
   }
 
   return created;
