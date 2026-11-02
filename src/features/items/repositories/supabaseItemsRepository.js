@@ -1,6 +1,7 @@
 import { getSupabaseClient } from "../../../lib/supabase/client";
 
-const PAGE_SIZE = 20;
+export const ITEMS_PAGE_SIZE = 20;
+const BUCKET = "item-images";
 
 function requireClient() {
   const client = getSupabaseClient();
@@ -8,7 +9,25 @@ function requireClient() {
   return client;
 }
 
-export async function listItems({ campusId, type, ownerId, cursor, pageSize = PAGE_SIZE }) {
+async function normalizeItem(supabase, item) {
+  const firstImage = [...(item.item_images || [])].sort((a, b) => a.position - b.position)[0];
+  let imageUrl = null;
+  if (firstImage?.storage_path) {
+    const { data } = await supabase.storage.from(BUCKET).createSignedUrl(firstImage.storage_path, 900);
+    imageUrl = data?.signedUrl || null;
+  }
+  return {
+    ...item,
+    userId: item.owner_id,
+    role: item.kind,
+    location: item.public_location,
+    date: item.occurred_at,
+    createdAt: item.created_at,
+    imageUrl,
+  };
+}
+
+export async function listItems({ campusId, type, ownerId, cursor, pageSize = ITEMS_PAGE_SIZE }) {
   const supabase = requireClient();
   let query = supabase
     .from("items")
@@ -18,18 +37,19 @@ export async function listItems({ campusId, type, ownerId, cursor, pageSize = PA
     .order("created_at", { ascending: false })
     .limit(pageSize);
 
-  if (type) query = query.eq("kind", type);
+  if (type && type !== "all") query = query.eq("kind", type);
   if (ownerId) query = query.eq("owner_id", ownerId);
   if (cursor) query = query.lt("created_at", cursor);
 
   const { data, error } = await query;
   if (error) throw error;
 
-  const items = data ?? [];
+  const rows = data ?? [];
+  const items = await Promise.all(rows.map((item) => normalizeItem(supabase, item)));
   return {
     items,
-    cursor: items.at(-1)?.created_at ?? null,
-    hasMore: items.length === pageSize,
+    cursor: rows.at(-1)?.created_at ?? null,
+    hasMore: rows.length === pageSize,
   };
 }
 
