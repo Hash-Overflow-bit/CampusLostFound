@@ -14,6 +14,29 @@ import {
   ITEMS_PAGE_SIZE,
 } from "../../features/items/repositories/supabaseItemsRepository";
 import "./ItemsList.css";
+import "./HomeItemsMarquee.css";
+
+const PUBLIC_HOME_ITEMS = [
+  { id: "public-card", role: "lost", title: "Card", category: "ID Card", location: "University Classroom", createdAt: "2026-08-17T21:38:45.500Z" },
+  { id: "public-register", role: "lost", title: "Register", category: "Notebook", location: "CB2-303", createdAt: "2026-01-26T17:38:45.924Z" },
+  { id: "public-keys", role: "lost", title: "Keys", category: "Keys", location: "Bike parking", createdAt: "2026-01-21T14:01:50.555Z" },
+  { id: "public-wallet", role: "lost", title: "Army design wallet", category: "Wallet", location: "University", createdAt: "2026-01-07T03:14:26.512Z" },
+  { id: "public-ring", role: "found", title: "Silver Ring", category: "Jewelry", location: "CB1 Level 6 Washroom", createdAt: "2025-11-10T12:56:02.896Z" },
+  { id: "public-helmet", role: "lost", title: "Helmet", category: "Other", location: "UMT Bike Parking", createdAt: "2025-10-30T18:32:40.045Z" },
+  { id: "public-id", role: "lost", title: "UMT Student ID Card", category: "ID Card", location: "SST2 10th floor / SST1 6th floor", createdAt: "2025-10-23T07:09:45.377Z" },
+  { id: "public-headset", role: "lost", title: "P9 headsets", category: "Electronics", location: "SST1 to girls-side mosque road", createdAt: "2025-11-13T17:24:17.118Z" },
+];
+
+const iconForCategory = (category) => {
+  const value = String(category || "").toLowerCase();
+  if (value.includes("id")) return "🪪";
+  if (value.includes("key")) return "🔑";
+  if (value.includes("wallet")) return "👛";
+  if (value.includes("jewel")) return "💍";
+  if (value.includes("elect")) return "🎧";
+  if (value.includes("notebook")) return "📒";
+  return "🎒";
+};
 
 const ItemsList = ({ searchQuery = "", onlyUserItems = false, filter = "all" }) => {
   const { user, profile, isAuthenticated, loading: authLoading } = useAuth();
@@ -28,6 +51,7 @@ const ItemsList = ({ searchQuery = "", onlyUserItems = false, filter = "all" }) 
 
   const campusId = profile?.campus_id || null;
   const ownerId = onlyUserItems ? user?.id : null;
+  const isHomePage = typeof window !== "undefined" && window.location.pathname === "/" && !onlyUserItems;
 
   useEffect(() => {
     let active = true;
@@ -35,8 +59,13 @@ const ItemsList = ({ searchQuery = "", onlyUserItems = false, filter = "all" }) 
       if (authLoading) return;
       if (!isAuthenticated || !campusId) {
         if (active) {
-          setItems([]);
-          setError("Please log in with your verified university account to view campus items.");
+          if (isHomePage) {
+            setItems(PUBLIC_HOME_ITEMS);
+            setError(null);
+          } else {
+            setItems([]);
+            setError("Please log in with your verified university account to view campus items.");
+          }
           setLoading(false);
         }
         return;
@@ -57,7 +86,7 @@ const ItemsList = ({ searchQuery = "", onlyUserItems = false, filter = "all" }) 
     };
     loadFirstPage();
     return () => { active = false; };
-  }, [authLoading, isAuthenticated, campusId, ownerId, filter]);
+  }, [authLoading, isAuthenticated, campusId, ownerId, filter, isHomePage]);
 
   const visibleItems = useMemo(
     () => items.filter((item) => matchesItemSearch(item, debouncedSearch)),
@@ -89,6 +118,13 @@ const ItemsList = ({ searchQuery = "", onlyUserItems = false, filter = "all" }) 
         year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit",
       });
     } catch { return "Invalid date"; }
+  };
+
+  const formatShortDate = (timestamp) => {
+    if (!timestamp) return "Recent";
+    try {
+      return new Date(timestamp).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+    } catch { return "Recent"; }
   };
 
   const handleContactClick = () => {
@@ -133,6 +169,34 @@ const ItemsList = ({ searchQuery = "", onlyUserItems = false, filter = "all" }) 
 
   if (authLoading || loading) return <div className="items-list-container"><div className="loading"><div className="spinner" /><p>Loading campus items...</p></div></div>;
   if (error && items.length === 0) return <div className="items-list-container"><div className="error"><p>{error}</p></div></div>;
+
+  if (isHomePage) {
+    const homeItems = visibleItems.slice(0, 8);
+    const marqueeItems = [...homeItems, ...homeItems];
+    return (
+      <section className="items-list-container home-items-showcase" aria-label="Recent campus reports">
+        <div className="home-items-heading">
+          <span>Real campus reports</span>
+          <h2>What students are looking for right now.</h2>
+        </div>
+        {homeItems.length === 0 ? <div className="no-items"><p>No matching reports found.</p></div> : (
+          <div className="home-items-marquee">
+            <div className="home-items-track">
+              {marqueeItems.map((item, index) => (
+                <article key={`${item.id}-${index}`} className={`home-report-card ${item.role === "found" ? "is-found" : "is-lost"}`} aria-hidden={index >= homeItems.length ? "true" : undefined}>
+                  <div className="home-report-top"><span className="home-report-status">{item.role === "found" ? "Found" : "Lost"}</span><span>{formatShortDate(item.createdAt)}</span></div>
+                  <div className="home-report-icon">{iconForCategory(item.category)}</div>
+                  <h3>{item.title || "Campus item"}</h3>
+                  <p>{item.category || "Other"}</p>
+                  <div className="home-report-location"><HiOutlineLocationMarker />{item.location || "Campus"}</div>
+                </article>
+              ))}
+            </div>
+          </div>
+        )}
+      </section>
+    );
+  }
 
   return (
     <div className="items-list-container">
