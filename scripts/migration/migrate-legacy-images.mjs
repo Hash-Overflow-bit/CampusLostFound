@@ -13,10 +13,6 @@ const supabase = createClient(storageConfig.url, storageConfig.serviceRoleKey, {
   auth: { persistSession: false, autoRefreshToken: false },
 });
 
-function firestoreId(row) {
-  return row?.id ?? row?._id ?? row?.docId ?? row?.documentId ?? row?.__name__ ?? null;
-}
-
 function getDataUrl(item) {
   for (const value of [item?.image, item?.imageUrl]) {
     if (typeof value === 'string' && value.startsWith('data:image/')) return value;
@@ -31,40 +27,46 @@ function extensionFor(mime) {
   return 'jpg';
 }
 
-const legacyWithImages = legacy.filter(getDataUrl);
-const readyByLegacyId = new Map(
-  ready.filter((r) => r?.legacy_id).map((r) => [String(r.legacy_id), r]),
-);
+function normalized(value) {
+  return String(value ?? '').trim().toLowerCase();
+}
 
+const legacyWithImages = legacy.filter(getDataUrl);
 console.log('Legacy records:', legacy.length);
 console.log('Legacy records with data images:', legacyWithImages.length);
 console.log('Ready records:', ready.length);
-console.log('Ready records with legacy_id:', readyByLegacyId.size);
 
 let uploaded = 0;
 let invalid = 0;
 let failed = 0;
 let unmatched = 0;
+let ambiguous = 0;
 
 for (const old of legacyWithImages) {
-  const oldId = firestoreId(old);
-  let migrated = oldId ? readyByLegacyId.get(String(oldId)) : null;
+  // items-ready.json does not contain the original Firestore document id.
+  // Match only when the migrated record is unique by stable migrated fields.
+  let candidates = ready.filter((r) => normalized(r?.item?.title) === normalized(old.title));
 
-  // Some Firestore JSON exporters do not retain the document ID. In that case,
-  // safely fall back to the unique legacy owner/title/date tuple used by this dataset.
-  if (!migrated) {
-    const candidates = ready.filter((r) => {
-      const source = r?.legacy ?? r?.source ?? {};
-      const item = r?.item ?? {};
-      const ownerMatches = !old.userId || source.userId === old.userId || r.firebase_uid === old.userId;
-      const titleMatches = item.title === old.title;
-      return ownerMatches && titleMatches;
-    });
-    if (candidates.length === 1) migrated = candidates[0];
+  if (old.category && candidates.length > 1) {
+    candidates = candidates.filter((r) => normalized(r?.item?.category) === normalized(old.category));
+  }
+  if (old.location && candidates.length > 1) {
+    candidates = candidates.filter((r) => normalized(r?.item?.public_location) === normalized(old.location));
+  }
+  if (old.description && candidates.length > 1) {
+    candidates = candidates.filter((r) => normalized(r?.item?.description) === normalized(old.description));
   }
 
+  if (candidates.length !== 1) {
+    console.log(candidates.length > 1 ? 'Ambiguous image record:' : 'Unmatched image record:', old.title ?? '(unknown)');
+    if (candidates.length > 1) ambiguous++;
+    else unmatched++;
+    continue;
+  }
+
+  const migrated = candidates[0];
   if (!migrated?.item?.id || !migrated?.item?.owner_id) {
-    console.log('Unmatched image record:', oldId ?? old.title ?? '(unknown)');
+    console.log('Unmatched image record:', old.title ?? '(unknown)');
     unmatched++;
     continue;
   }
@@ -72,7 +74,7 @@ for (const old of legacyWithImages) {
   const dataUrl = getDataUrl(old);
   const match = dataUrl.match(/^data:(image\/[^;]+);base64,(.+)$/s);
   if (!match) {
-    console.log('Skipping invalid image:', oldId ?? old.title ?? '(unknown)');
+    console.log('Skipping invalid image:', old.title ?? '(unknown)');
     invalid++;
     continue;
   }
@@ -90,13 +92,13 @@ for (const old of legacyWithImages) {
     .maybeSingle();
 
   if (existingError) {
-    console.error('Existing-row check failed:', oldId ?? old.title, existingError.message);
+    console.error('Existing-row check failed:', old.title, existingError.message);
     failed++;
     continue;
   }
 
   if (existing) {
-    console.log('Already migrated:', oldId ?? old.title);
+    console.log('Already migrated:', old.title);
     continue;
   }
 
@@ -105,7 +107,7 @@ for (const old of legacyWithImages) {
     .upload(path, buffer, { contentType: mime, upsert: false });
 
   if (uploadError) {
-    console.error('Upload failed:', oldId ?? old.title, uploadError.message);
+    console.error('Upload failed:', old.title, uploadError.message);
     failed++;
     continue;
   }
@@ -118,22 +120,23 @@ for (const old of legacyWithImages) {
   });
 
   if (dbError) {
-    console.error('DB row failed:', oldId ?? old.title, dbError.message);
+    console.error('DB row failed:', old.title, dbError.message);
     await supabase.storage.from('item-images').remove([path]);
     failed++;
     continue;
   }
 
   uploaded++;
-  console.log('Migrated image:', oldId ?? old.title);
+  console.log('Migrated image:', old.title);
 }
 
 console.log('\nImages migrated:', uploaded);
 console.log('Unmatched image records:', unmatched);
+console.log('Ambiguous image records:', ambiguous);
 console.log('Invalid images skipped:', invalid);
 console.log('Failed:', failed);
 
-if (legacyWithImages.length > 0 && uploaded === 0 && unmatched === legacyWithImages.length) {
-  console.error('\nNo images were matched. Do not delete Firebase data.');
+if (legacyWithImages.length > 0 && uploaded === 0) {
+  console.error('\nNo images were migrated. Do not delete Firebase data.');
   process.exitCode = 2;
 }
