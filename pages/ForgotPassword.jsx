@@ -3,6 +3,8 @@ import { Link } from "react-router-dom";
 import { requestPasswordReset } from "../features/auth/authService";
 import { AUTH_SUCCESS_MESSAGES, getAuthErrorMessage } from "../features/auth/authMessages";
 import { assertCooldownReady, startCooldown } from "../features/auth/clientCooldown";
+import AuthShell from "../components/auth/AuthShell";
+import SEO from "../componenets/seo/SEO";
 
 function ForgotPassword() {
   const [email, setEmail] = useState("");
@@ -36,36 +38,29 @@ function ForgotPassword() {
   };
 
   return (
-    <main className="auth-page">
-      <section className="auth-card" aria-labelledby="forgot-password-title">
-        <p className="auth-eyebrow">Account recovery</p>
-        <h1 id="forgot-password-title">Reset your password</h1>
-        <p>Enter your university email. If an account exists, we'll send instructions to reset your password.</p>
+    <>
+      <SEO title="Reset password | Campus Lost Found" description="Request a secure password reset for your Campus Lost Found account." url="https://campuslostfound.vercel.app/forgot-password" links={[{ rel: "canonical", href: "https://campuslostfound.vercel.app/forgot-password" }]} />
+      <AuthShell
+        eyebrow="Account recovery"
+        title="Reset your password."
+        subtitle="Enter your university email. If an account exists, we’ll send a secure reset link."
+        sideTitle={"Lost your password?\nNot your account."}
+        sideCopy="Recovery stays simple and private. We never reveal whether an email is registered."
+      >
+        <form className="auth-form" onSubmit={handleSubmit} noValidate>
+          <div className="auth-field">
+            <label htmlFor="reset-email">University email</label>
+            <input id="reset-email" className={`auth-input ${error ? "is-error" : ""}`} type="email" autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="you@university.edu.pk" disabled={loading} required />
+          </div>
 
-        <form onSubmit={handleSubmit} noValidate>
-          <label htmlFor="reset-email">University email</label>
-          <input
-            id="reset-email"
-            type="email"
-            autoComplete="email"
-            value={email}
-            onChange={(event) => setEmail(event.target.value)}
-            placeholder="you@university.edu.pk"
-            disabled={loading}
-            required
-          />
+          {error && <div className="auth-notice auth-notice--error" role="alert">{error}</div>}
+          {message && <div className="auth-notice auth-notice--success" role="status">{message}</div>}
 
-          {error && <div className="auth-message auth-message--error" role="alert">{error}</div>}
-          {message && <div className="auth-message auth-message--success" role="status">{message}</div>}
-
-          <button type="submit" className="login-btn" disabled={loading}>
-            {loading ? "Sending..." : "Send reset link"}
-          </button>
+          <button type="submit" className="auth-submit" disabled={loading}>{loading ? "Sending reset link…" : "Send reset link →"}</button>
+          <p className="auth-switch"><Link className="auth-link" to="/login">← Back to sign in</Link></p>
         </form>
-
-        <p className="auth-footer"><Link to="/login">Back to sign in</Link></p>
-      </section>
-    </main>
+      </AuthShell>
+    </>
   );
 }
 
