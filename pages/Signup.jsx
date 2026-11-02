@@ -8,7 +8,7 @@ import { AUTH_SUCCESS_MESSAGES, getAuthErrorMessage } from "../features/auth/aut
 import { consumeClientCooldown } from "../features/auth/clientCooldown";
 import { normalizeEmail, validateFullName, validatePassword, validateUniversityEmailForSelection } from "../features/auth/authValidation";
 import SEO from "../componenets/seo/SEO";
-import "./Signup.css";
+import AuthShell from "../components/auth/AuthShell";
 
 export default function Signup() {
   const { isAuthenticated, isEmailVerified } = useAuth();
@@ -75,25 +75,88 @@ export default function Signup() {
     } finally { setResending(false); }
   };
 
-  if (confirmationEmail) return (
-    <main className="signup-main-container">
-      <section className="signup-wrapper auth-confirmation" aria-live="polite">
-        <div className="signup-header"><h1 className="signup-title">Check your university email</h1><p className="signup-subtitle">We sent a confirmation link to <strong>{confirmationEmail}</strong>.</p></div>
-        {notice && <div className={notice.type === "success" ? "success-message" : "error-message"} role={notice.type === "error" ? "alert" : "status"}>{notice.text}</div>}
-        <p>Open the email, confirm your address, then sign in. Check spam or junk if it does not arrive shortly.</p>
-        <Link className="login-btn" to="/login" state={{ email: confirmationEmail, reason: "confirmation-sent" }}>Continue to sign in</Link>
-        <button className="signup-btn" type="button" onClick={handleResend} disabled={resending}>{resending ? "Sending…" : "Resend confirmation email"}</button>
-      </section>
-    </main>
-  );
+  if (confirmationEmail) {
+    return (
+      <AuthShell
+        eyebrow="Almost there"
+        title="Check your university inbox."
+        subtitle={`We sent a confirmation link to ${confirmationEmail}. Confirm it to activate your campus account.`}
+        sideTitle={"One quick check.\nThen you’re in."}
+      >
+        <div className="auth-confirmation" aria-live="polite">
+          <div className="auth-confirmation__icon">✉</div>
+          {notice && <div className={`auth-notice auth-notice--${notice.type}`} role={notice.type === "error" ? "alert" : "status"}>{notice.text}</div>}
+          <p className="auth-help">Open the email, confirm your address, then sign in. Check spam or junk if it does not arrive shortly.</p>
+          <div className="auth-confirmation__actions">
+            <Link className="auth-submit" to="/login" state={{ email: confirmationEmail, reason: "confirmation-sent" }}>Continue to sign in →</Link>
+            <button className="auth-secondary-button" type="button" onClick={handleResend} disabled={resending}>{resending ? "Sending…" : "Resend email"}</button>
+          </div>
+        </div>
+      </AuthShell>
+    );
+  }
 
-  return <><SEO title="Create your Campus Lost Found account" description="Join Campus Lost Found with a verified university email." url="https://campuslostfound.vercel.app/signup" links={[{ rel: "canonical", href: "https://campuslostfound.vercel.app/signup" }]} /><main className="signup-main-container"><div className="signup-wrapper"><div className="signup-header"><h1 className="signup-title">Create your account</h1><p className="signup-subtitle">Use your university email so the campus community stays trusted.</p></div><form className="signup-form" onSubmit={handleSubmit(onSubmit)} noValidate>
-    <div className="form-group"><label className="form-label" htmlFor="fullName">Full name</label><input id="fullName" autoComplete="name" className={`form-control ${errors.fullName ? "error" : ""}`} {...register("fullName", { validate: validateFullName })} />{errors.fullName && <div className="error-message" role="alert">{errors.fullName.message}</div>}</div>
-    <div className="form-group"><label className="form-label" htmlFor="university">University</label><select id="university" className={`form-control ${errors.university ? "error" : ""}`} {...register("university", { required: "Select your university." })}><option value="">Choose your university</option>{basicUniversities.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select>{errors.university && <div className="error-message" role="alert">{errors.university.message}</div>}</div>
-    <div className="form-group"><label className="form-label" htmlFor="campus">Campus</label><select id="campus" disabled={!universityId || campusLoading} className={`form-control ${errors.campus ? "error" : ""}`} {...register("campus", { required: "Select your campus." })}><option value="">{campusLoading ? "Loading campuses…" : "Choose your campus"}</option>{campuses.map((item) => <option key={item.id ?? item.campusId} value={item.id ?? item.campusId}>{item.name}</option>)}</select>{errors.campus && <div className="error-message" role="alert">{errors.campus.message}</div>}</div>
-    <div className="form-group"><label className="form-label" htmlFor="email">University email</label><input id="email" type="email" autoComplete="email" className={`form-control ${errors.email ? "error" : ""}`} {...register("email", { validate: (value) => validateUniversityEmailForSelection(value, universityId) })} />{errors.email && <div className="error-message" role="alert">{errors.email.message}</div>}</div>
-    <div className="form-group"><label className="form-label" htmlFor="password">Password</label><input id="password" type="password" autoComplete="new-password" className={`form-control ${errors.password ? "error" : ""}`} {...register("password", { validate: validatePassword })} /><small>Use 10+ characters with uppercase, lowercase and a number.</small>{errors.password && <div className="error-message" role="alert">{errors.password.message}</div>}</div>
-    <div className="form-group"><label className="form-label" htmlFor="confirmPassword">Confirm password</label><input id="confirmPassword" type="password" autoComplete="new-password" className={`form-control ${errors.confirmPassword ? "error" : ""}`} {...register("confirmPassword", { validate: (value, values) => value === values.password || "Passwords do not match." })} />{errors.confirmPassword && <div className="error-message" role="alert">{errors.confirmPassword.message}</div>}</div>
-    {notice && <div className={notice.type === "success" ? "success-message" : "error-message"} role={notice.type === "error" ? "alert" : "status"}>{notice.text}</div>}<button className="signup-btn" type="submit" disabled={submitting}>{submitting ? "Creating account…" : "Create account"}</button><p className="login-link">Already have an account? <Link to="/login">Sign in</Link></p>
-  </form></div></main></>;
+  return (
+    <>
+      <SEO title="Create your Campus Lost Found account" description="Join Campus Lost Found with a verified university email." url="https://campuslostfound.vercel.app/signup" links={[{ rel: "canonical", href: "https://campuslostfound.vercel.app/signup" }]} />
+      <AuthShell
+        eyebrow="Join your campus"
+        title="Create your student account."
+        subtitle="Your university email connects you to the right campus network and keeps recovery activity relevant."
+        sideTitle={"Your campus.\nYour recovery network."}
+      >
+        <form className="auth-form" onSubmit={handleSubmit(onSubmit)} noValidate>
+          <div className="auth-form-grid">
+            <div className="auth-field auth-field--full">
+              <label htmlFor="fullName">Full name</label>
+              <input id="fullName" autoComplete="name" placeholder="Your full name" className={`auth-input ${errors.fullName ? "is-error" : ""}`} {...register("fullName", { validate: validateFullName })} />
+              {errors.fullName && <span className="auth-error" role="alert">{errors.fullName.message}</span>}
+            </div>
+
+            <div className="auth-field">
+              <label htmlFor="university">University</label>
+              <select id="university" className={`auth-select ${errors.university ? "is-error" : ""}`} {...register("university", { required: "Select your university." })}>
+                <option value="">Choose university</option>
+                {basicUniversities.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+              </select>
+              {errors.university && <span className="auth-error" role="alert">{errors.university.message}</span>}
+            </div>
+
+            <div className="auth-field">
+              <label htmlFor="campus">Campus</label>
+              <select id="campus" disabled={!universityId || campusLoading} className={`auth-select ${errors.campus ? "is-error" : ""}`} {...register("campus", { required: "Select your campus." })}>
+                <option value="">{campusLoading ? "Loading campuses…" : "Choose campus"}</option>
+                {campuses.map((item) => <option key={item.id ?? item.campusId} value={item.id ?? item.campusId}>{item.name}</option>)}
+              </select>
+              {errors.campus && <span className="auth-error" role="alert">{errors.campus.message}</span>}
+            </div>
+
+            <div className="auth-field auth-field--full">
+              <label htmlFor="email">University email</label>
+              <input id="email" type="email" autoComplete="email" placeholder="you@university.edu.pk" className={`auth-input ${errors.email ? "is-error" : ""}`} {...register("email", { validate: (value) => validateUniversityEmailForSelection(value, universityId) })} />
+              <span className="auth-help">We use this only to verify your university community.</span>
+              {errors.email && <span className="auth-error" role="alert">{errors.email.message}</span>}
+            </div>
+
+            <div className="auth-field">
+              <label htmlFor="password">Password</label>
+              <input id="password" type="password" autoComplete="new-password" placeholder="Create password" className={`auth-input ${errors.password ? "is-error" : ""}`} {...register("password", { validate: validatePassword })} />
+              {errors.password && <span className="auth-error" role="alert">{errors.password.message}</span>}
+            </div>
+
+            <div className="auth-field">
+              <label htmlFor="confirmPassword">Confirm password</label>
+              <input id="confirmPassword" type="password" autoComplete="new-password" placeholder="Repeat password" className={`auth-input ${errors.confirmPassword ? "is-error" : ""}`} {...register("confirmPassword", { validate: (value, values) => value === values.password || "Passwords do not match." })} />
+              {errors.confirmPassword && <span className="auth-error" role="alert">{errors.confirmPassword.message}</span>}
+            </div>
+          </div>
+
+          <span className="auth-help">Password: 10+ characters with uppercase, lowercase and a number.</span>
+          {notice && <div className={`auth-notice auth-notice--${notice.type}`} role={notice.type === "error" ? "alert" : "status"}>{notice.text}</div>}
+          <button className="auth-submit" type="submit" disabled={submitting}>{submitting ? "Creating account…" : "Create account →"}</button>
+          <p className="auth-switch">Already have an account? <Link className="auth-link" to="/login">Sign in</Link></p>
+        </form>
+      </AuthShell>
+    </>
+  );
 }
