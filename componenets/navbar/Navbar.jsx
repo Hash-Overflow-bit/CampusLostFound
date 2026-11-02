@@ -1,16 +1,35 @@
-import { useState } from "react";
-import { Link, NavLink } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../../AuthContext/AuthContext";
 import "./Navbar.css";
 
 export default function Navbar() {
   const { user, logout } = useAuth();
+  const location = useLocation();
+  const navigate = useNavigate();
   const [menuOpen, setMenuOpen] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
 
   const closeNavbar = () => {
     setMenuOpen(false);
     setAccountOpen(false);
+  };
+
+  useEffect(() => {
+    closeNavbar();
+  }, [location.pathname, location.hash]);
+
+  const goToSection = (sectionId) => {
+    closeNavbar();
+    const hash = `#${sectionId}`;
+
+    if (location.pathname !== "/") {
+      navigate({ pathname: "/", hash });
+      return;
+    }
+
+    window.history.replaceState(null, "", hash);
+    document.getElementById(sectionId)?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
 
   const handleLogout = async () => {
@@ -43,10 +62,10 @@ export default function Navbar() {
 
         <div id="campusNavMenu" className={`campus-nav-menu${menuOpen ? " is-open" : ""}`}>
           <div className="campus-nav-links">
-            <NavLink className="campus-nav-link" to="/" onClick={closeNavbar}>Home</NavLink>
-            <NavLink className="campus-nav-link" to="/how-it-works" onClick={closeNavbar}>How it works</NavLink>
-            <NavLink className="campus-nav-link" to="/universities" onClick={closeNavbar}>Campuses</NavLink>
-            <NavLink className="campus-nav-link" to="/about" onClick={closeNavbar}>About</NavLink>
+            <Link className="campus-nav-link" to="/" onClick={closeNavbar}>Home</Link>
+            <button className="campus-nav-link campus-nav-scroll" type="button" onClick={() => goToSection("how-it-works")}>How it works</button>
+            <button className="campus-nav-link campus-nav-scroll" type="button" onClick={() => goToSection("campuses")}>Campuses</button>
+            <button className="campus-nav-link campus-nav-scroll" type="button" onClick={() => goToSection("about")}>About</button>
           </div>
 
           <div className="campus-nav-actions">
