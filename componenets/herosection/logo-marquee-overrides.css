@@ -1,3 +1,11 @@
+.clf-logo-heading {
+  display: none !important;
+}
+
+.clf-logo-strip {
+  padding-top: 18px !important;
+}
+
 .clf-logo-loop {
   height: 148px;
   border-top: 0 !important;
@@ -10,6 +18,10 @@
 
 .clf-skeleton-marquee .logoloop__item img {
   max-width: 150px;
+}
+
+.clf-use-cases-head > .clf-kicker {
+  display: none !important;
 }
 
 @media (max-width: 650px) {
