@@ -38,7 +38,7 @@ const iconForCategory = (category) => {
   return "🎒";
 };
 
-const ItemsList = ({ searchQuery = "", onlyUserItems = false, filter = "all" }) => {
+const ItemsList = ({ searchQuery = "", onlyUserItems = false, filter = "all", showHeader = true }) => {
   const { user, profile, isAuthenticated, loading: authLoading } = useAuth();
   const [items, setItems] = useState([]);
   const [cursor, setCursor] = useState(null);
@@ -201,7 +201,7 @@ const ItemsList = ({ searchQuery = "", onlyUserItems = false, filter = "all" }) 
   return (
     <div className="items-list-container">
       {editingItem && <div className="update-modal"><ReportFlow initialData={editingItem} onCancel={() => setEditingItem(null)} onComplete={handleUpdateSubmit} /></div>}
-      <div className="items-header"><h2>Lost & Found Items</h2></div>
+      {showHeader && <div className="items-header"><h2>Lost & Found Items</h2></div>}
       {visibleItems.length === 0 ? <div className="no-items"><p>No matching campus items found.</p></div> : (
         <div className="items-grid">{visibleItems.map((item) => (
           <div key={item.id} className={`item-card ${item.role === "lost" ? "lost-card" : "found-card"}`}>
