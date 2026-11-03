@@ -71,12 +71,15 @@ export async function createReport({ item, privateDetails, image }) {
     }
 
     if (created?.id) {
-      await supabase
-        .from("items")
-        .delete()
-        .eq("id", created.id)
-        .eq("owner_id", created.owner_id)
-        .catch(() => {});
+      try {
+        await supabase
+          .from("items")
+          .delete()
+          .eq("id", created.id)
+          .eq("owner_id", created.owner_id);
+      } catch {
+        // Best-effort cleanup. Original error is more useful to the caller.
+      }
     }
 
     throw error;
@@ -98,7 +101,7 @@ export async function getOwnedReportForEdit(itemId, ownerId) {
   const [{ data: privateDetails, error: privateError }, { data: images, error: imagesError }] = await Promise.all([
     supabase
       .from("item_private_details")
-      .select("contact_email, contact_phone")
+      .select("exact_location, identifying_details, contact_email, contact_phone")
       .eq("item_id", itemId)
       .eq("owner_id", ownerId)
       .maybeSingle(),
@@ -133,6 +136,8 @@ export async function getOwnedReportForEdit(itemId, ownerId) {
     date: normalizeEditDate(item.occurred_at),
     email: privateDetails?.contact_email || "",
     phone: privateDetails?.contact_phone || "",
+    privateExactLocation: privateDetails?.exact_location || null,
+    privateIdentifyingDetails: privateDetails?.identifying_details || null,
     image: null,
     existingImageUrl,
     existingImagePath: firstImage?.storage_path || null,
@@ -147,41 +152,62 @@ export async function updateReport({
   image,
 }) {
   const supabase = requireClient();
+  const original = await getOwnedReportForEdit(itemId, ownerId);
 
-  const { error: itemError } = await supabase
-    .from("items")
-    .update(itemPatch)
-    .eq("id", itemId)
-    .eq("owner_id", ownerId);
+  const originalItemPatch = {
+    kind: original.role,
+    title: original.title,
+    category: original.category,
+    brand: original.brand || null,
+    color: original.color || null,
+    description: original.description || null,
+    public_location: original.location || null,
+    occurred_at: original.date ? new Date(original.date).toISOString() : null,
+  };
 
-  if (itemError) throw itemError;
+  const originalPrivate = {
+    item_id: itemId,
+    owner_id: ownerId,
+    exact_location: original.privateExactLocation,
+    identifying_details: original.privateIdentifyingDetails,
+    contact_email: original.email || null,
+    contact_phone: original.phone || null,
+  };
 
-  if (privateDetails) {
-    const { error: privateError } = await supabase
-      .from("item_private_details")
-      .upsert({
-        item_id: itemId,
-        owner_id: ownerId,
-        ...privateDetails,
-      }, {
-        onConflict: "item_id",
-      });
+  let newPath = null;
 
-    if (privateError) throw privateError;
-  }
-
-  if (image) {
-    const { data: oldImages, error: oldImagesError } = await supabase
-      .from("item_images")
-      .select("id, storage_path")
-      .eq("item_id", itemId)
+  try {
+    const { error: itemError } = await supabase
+      .from("items")
+      .update(itemPatch)
+      .eq("id", itemId)
       .eq("owner_id", ownerId);
 
-    if (oldImagesError) throw oldImagesError;
+    if (itemError) throw itemError;
 
-    let newPath = null;
+    if (privateDetails) {
+      const { error: privateError } = await supabase
+        .from("item_private_details")
+        .upsert({
+          item_id: itemId,
+          owner_id: ownerId,
+          ...privateDetails,
+        }, {
+          onConflict: "item_id",
+        });
 
-    try {
+      if (privateError) throw privateError;
+    }
+
+    if (image) {
+      const { data: oldImages, error: oldImagesError } = await supabase
+        .from("item_images")
+        .select("id, storage_path")
+        .eq("item_id", itemId)
+        .eq("owner_id", ownerId);
+
+      if (oldImagesError) throw oldImagesError;
+
       newPath = await uploadItemImage({
         userId: ownerId,
         itemId,
@@ -216,13 +242,39 @@ export async function updateReport({
           .filter(Boolean)
           .map((storagePath) => removeItemImage(storagePath))
       );
-    } catch (imageError) {
-      if (newPath) await removeItemImage(newPath).catch(() => {});
-      throw imageError;
     }
-  }
 
-  return getOwnedReportForEdit(itemId, ownerId);
+    return getOwnedReportForEdit(itemId, ownerId);
+  } catch (error) {
+    if (newPath) {
+      try {
+        await supabase
+          .from("item_images")
+          .delete()
+          .eq("storage_path", newPath)
+          .eq("owner_id", ownerId);
+      } catch {
+        // Best-effort metadata cleanup.
+      }
+      await removeItemImage(newPath).catch(() => {});
+    }
+
+    try {
+      await supabase
+        .from("items")
+        .update(originalItemPatch)
+        .eq("id", itemId)
+        .eq("owner_id", ownerId);
+
+      await supabase
+        .from("item_private_details")
+        .upsert(originalPrivate, { onConflict: "item_id" });
+    } catch {
+      // Preserve the original failure; rollback cleanup is best effort.
+    }
+
+    throw error;
+  }
 }
 
 export async function deleteOwnedReport(itemId, ownerId) {
