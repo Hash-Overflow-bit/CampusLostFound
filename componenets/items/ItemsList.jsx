@@ -34,13 +34,30 @@ const iconForCategory = (category) => {
   if (value.includes("wallet")) return "👛";
   if (value.includes("jewel")) return "💍";
   if (value.includes("elect")) return "🎧";
-  if (value.includes("notebook")) return "📒";
-  return "🎒";
+  if (value.includes("notebook") || value.includes("book")) return "📒";
+  if (value.includes("bag")) return "🎒";
+  if (value.includes("cloth")) return "👕";
+  return "📦";
 };
 
-const ItemsList = ({ searchQuery = "", onlyUserItems = false, filter = "all", showHeader = true }) => {
+const lifecycleLabel = (status) => ({
+  open: "Active",
+  possible_match: "Possible match",
+  claim_pending: "Claim pending",
+  recovered: "Recovered",
+  closed: "Closed",
+}[status] || "Active");
+
+const ItemsList = ({
+  searchQuery = "",
+  onlyUserItems = false,
+  filter = "all",
+  showHeader = true,
+  onMetaChange,
+}) => {
   const { user, profile, isAuthenticated, loading: authLoading } = useAuth();
   const [items, setItems] = useState([]);
+  const [totalCount, setTotalCount] = useState(0);
   const [cursor, setCursor] = useState(null);
   const [hasMore, setHasMore] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -55,38 +72,62 @@ const ItemsList = ({ searchQuery = "", onlyUserItems = false, filter = "all", sh
 
   useEffect(() => {
     let active = true;
+
     const loadFirstPage = async () => {
       if (authLoading) return;
+
       if (!isAuthenticated || !campusId) {
-        if (active) {
-          if (isHomePage) {
-            setItems(PUBLIC_HOME_ITEMS);
-            setError(null);
-          } else {
-            setItems([]);
-            setError("Please log in with your verified university account to view campus items.");
-          }
-          setLoading(false);
+        if (!active) return;
+
+        if (isHomePage) {
+          setItems(PUBLIC_HOME_ITEMS);
+          setTotalCount(PUBLIC_HOME_ITEMS.length);
+          setError(null);
+          onMetaChange?.({ total: PUBLIC_HOME_ITEMS.length, loaded: PUBLIC_HOME_ITEMS.length });
+        } else {
+          setItems([]);
+          setTotalCount(0);
+          setError("Please log in with your verified university account to view campus items.");
+          onMetaChange?.({ total: 0, loaded: 0 });
         }
+
+        setLoading(false);
         return;
       }
+
       try {
         setLoading(true);
         setError(null);
-        const page = await listItems({ campusId, type: filter, ownerId, pageSize: ITEMS_PAGE_SIZE });
+        const page = await listItems({
+          campusId,
+          type: filter,
+          ownerId,
+          pageSize: ITEMS_PAGE_SIZE,
+        });
+
         if (!active) return;
+
         setItems(page.items);
+        setTotalCount(page.total);
         setCursor(page.cursor);
         setHasMore(page.hasMore);
-      } catch {
-        if (active) setError("Failed to load items. Please try again later.");
+        onMetaChange?.({ total: page.total, loaded: page.items.length });
+      } catch (loadError) {
+        console.error("Campus items load error:", loadError);
+        if (active) {
+          setItems([]);
+          setTotalCount(0);
+          setError("Failed to load campus items. Please try again later.");
+          onMetaChange?.({ total: 0, loaded: 0 });
+        }
       } finally {
         if (active) setLoading(false);
       }
     };
+
     loadFirstPage();
     return () => { active = false; };
-  }, [authLoading, isAuthenticated, campusId, ownerId, filter, isHomePage]);
+  }, [authLoading, isAuthenticated, campusId, ownerId, filter, isHomePage, onMetaChange]);
 
   const visibleItems = useMemo(
     () => items.filter((item) => matchesItemSearch(item, debouncedSearch)),
@@ -95,16 +136,25 @@ const ItemsList = ({ searchQuery = "", onlyUserItems = false, filter = "all", sh
 
   const loadMore = async () => {
     if (!hasMore || !cursor || loadingMore) return;
+
     try {
       setLoadingMore(true);
-      const page = await listItems({ campusId, type: filter, ownerId, cursor, pageSize: ITEMS_PAGE_SIZE });
+      const page = await listItems({
+        campusId,
+        type: filter,
+        ownerId,
+        cursor,
+        pageSize: ITEMS_PAGE_SIZE,
+      });
+
       setItems((previous) => {
         const seen = new Set(previous.map((item) => item.id));
         return [...previous, ...page.items.filter((item) => !seen.has(item.id))];
       });
       setCursor(page.cursor);
       setHasMore(page.hasMore);
-    } catch {
+    } catch (loadError) {
+      console.error("Load more items error:", loadError);
       setError("Could not load more items. Please try again.");
     } finally {
       setLoadingMore(false);
@@ -112,19 +162,25 @@ const ItemsList = ({ searchQuery = "", onlyUserItems = false, filter = "all", sh
   };
 
   const formatDate = (timestamp) => {
-    if (!timestamp) return "Unknown date";
+    if (!timestamp) return "Recent";
     try {
       return new Date(timestamp).toLocaleDateString("en-US", {
-        year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit",
+        month: "short",
+        day: "numeric",
+        year: "numeric",
       });
-    } catch { return "Invalid date"; }
+    } catch {
+      return "Recent";
+    }
   };
 
   const formatShortDate = (timestamp) => {
     if (!timestamp) return "Recent";
     try {
       return new Date(timestamp).toLocaleDateString("en-US", { month: "short", day: "numeric" });
-    } catch { return "Recent"; }
+    } catch {
+      return "Recent";
+    }
   };
 
   const handleContactClick = () => {
@@ -136,7 +192,10 @@ const ItemsList = ({ searchQuery = "", onlyUserItems = false, filter = "all", sh
     try {
       await closeOwnedItem(item.id);
       setItems((previous) => previous.filter((current) => current.id !== item.id));
-    } catch { alert("Failed to remove item. Please try again."); }
+      setTotalCount((count) => Math.max(0, count - 1));
+    } catch {
+      alert("Failed to remove item. Please try again.");
+    }
   };
 
   const handleUpdateItem = (item) => {
@@ -146,6 +205,7 @@ const ItemsList = ({ searchQuery = "", onlyUserItems = false, filter = "all", sh
 
   const handleUpdateSubmit = async (updatedData) => {
     if (!editingItem?.id || !updatedData || editingItem.owner_id !== user?.id) return;
+
     const patch = {
       kind: updatedData.role,
       title: updatedData.title,
@@ -154,6 +214,7 @@ const ItemsList = ({ searchQuery = "", onlyUserItems = false, filter = "all", sh
       public_location: updatedData.location || null,
       occurred_at: updatedData.date ? new Date(updatedData.date).toISOString() : null,
     };
+
     try {
       await updateOwnedItem(editingItem.id, patch);
       setItems((previous) => previous.map((item) => item.id === editingItem.id ? {
@@ -164,31 +225,56 @@ const ItemsList = ({ searchQuery = "", onlyUserItems = false, filter = "all", sh
         date: patch.occurred_at,
       } : item));
       setEditingItem(null);
-    } catch { alert("Failed to update item. Please try again."); }
+    } catch {
+      alert("Failed to update item. Please try again.");
+    }
   };
 
-  if (authLoading || loading) return <div className="items-list-container"><div className="loading"><div className="spinner" /><p>Loading campus items...</p></div></div>;
-  if (error && items.length === 0) return <div className="items-list-container"><div className="error"><p>{error}</p></div></div>;
+  if (authLoading || loading) {
+    return (
+      <div className="items-list-container">
+        <div className="loading"><div className="spinner" /><p>Loading campus items...</p></div>
+      </div>
+    );
+  }
+
+  if (error && items.length === 0) {
+    return <div className="items-list-container"><div className="error"><p>{error}</p></div></div>;
+  }
 
   if (isHomePage) {
     const homeItems = visibleItems.slice(0, 8);
     const marqueeItems = [...homeItems, ...homeItems];
+
     return (
       <section className="items-list-container home-items-showcase" aria-label="Recent campus reports">
         <div className="home-items-heading">
           <span>Real campus reports</span>
           <h2>What students are looking for right now.</h2>
         </div>
-        {homeItems.length === 0 ? <div className="no-items"><p>No matching reports found.</p></div> : (
+
+        {homeItems.length === 0 ? (
+          <div className="no-items"><p>No matching reports found.</p></div>
+        ) : (
           <div className="home-items-marquee">
             <div className="home-items-track">
               {marqueeItems.map((item, index) => (
-                <article key={`${item.id}-${index}`} className={`home-report-card ${item.role === "found" ? "is-found" : "is-lost"}`} aria-hidden={index >= homeItems.length ? "true" : undefined}>
-                  <div className="home-report-top"><span className="home-report-status">{item.role === "found" ? "Found" : "Lost"}</span><span>{formatShortDate(item.createdAt)}</span></div>
+                <article
+                  key={`${item.id}-${index}`}
+                  className={`home-report-card ${item.role === "found" ? "is-found" : "is-lost"}`}
+                  aria-hidden={index >= homeItems.length ? "true" : undefined}
+                >
+                  <div className="home-report-top">
+                    <span className="home-report-status">{item.role === "found" ? "Found" : "Lost"}</span>
+                    <span>{formatShortDate(item.createdAt)}</span>
+                  </div>
                   <div className="home-report-icon">{iconForCategory(item.category)}</div>
                   <h3>{item.title || "Campus item"}</h3>
                   <p>{item.category || "Other"}</p>
-                  <div className="home-report-location"><HiOutlineLocationMarker />{item.location || "Campus"}</div>
+                  <div className="home-report-location">
+                    <HiOutlineLocationMarker />
+                    {item.location || "Campus"}
+                  </div>
                 </article>
               ))}
             </div>
@@ -198,23 +284,108 @@ const ItemsList = ({ searchQuery = "", onlyUserItems = false, filter = "all", sh
     );
   }
 
+  const remaining = Math.max(0, totalCount - items.length);
+
   return (
     <div className="items-list-container">
-      {editingItem && <div className="update-modal"><ReportFlow initialData={editingItem} onCancel={() => setEditingItem(null)} onComplete={handleUpdateSubmit} /></div>}
-      {showHeader && <div className="items-header"><h2>Lost & Found Items</h2></div>}
-      {visibleItems.length === 0 ? <div className="no-items"><p>No matching campus items found.</p></div> : (
-        <div className="items-grid">{visibleItems.map((item) => (
-          <div key={item.id} className={`item-card ${item.role === "lost" ? "lost-card" : "found-card"}`}>
-            <div className="card-header"><span className={`status-badge ${item.role}`}>{item.role === "lost" ? "Lost" : "Found"}</span><span className="date">{formatDate(item.createdAt)}</span></div>
-            <div className="item-title-container"><h3 className="item-title">{item.title || "Unknown Item"}</h3><p className="item-category">{item.category || "Not specified"}</p></div>
-            {item.imageUrl && <div className="card-image"><img loading="lazy" src={item.imageUrl} alt={item.title || "Reported item"} /></div>}
-            <div className="card-content"><p className="item-description"><TbFileDescription className="content-icon des-icon" />{item.description || "No description provided"}</p><p className="item-location"><HiOutlineLocationMarker className="content-icon" />{item.location || "Not specified"}</p></div>
-            <div className="card-footer">{onlyUserItems && item.owner_id === user?.id ? <><button className="remove-item-btn" onClick={() => handleRemoveItem(item)}><MdDelete className="button-icon" /> Remove Item</button><button className="update-item-btn" onClick={() => handleUpdateItem(item)}><MdEdit className="button-icon" /> Update</button></> : <button className={`contact-btn ${item.role === "found" ? "found-btn" : "lost-btn"}`} onClick={handleContactClick}><CiPhone className="button-icon" />{item.role === "found" ? "This might be mine" : "I found this"}</button>}</div>
-          </div>
-        ))}</div>
+      {editingItem && (
+        <div className="update-modal">
+          <ReportFlow
+            initialData={editingItem}
+            onCancel={() => setEditingItem(null)}
+            onComplete={handleUpdateSubmit}
+          />
+        </div>
       )}
-      {error && <div className="error"><p>{error}</p></div>}
-      {hasMore && <div className="items-pagination"><button type="button" onClick={loadMore} disabled={loadingMore}>{loadingMore ? "Loading..." : "Load more"}</button></div>}
+
+      {showHeader && (
+        <div className="items-header">
+          <div>
+            <p className="items-header__eyebrow">Campus network</p>
+            <h2>Lost & Found Items</h2>
+          </div>
+          <span className="items-header__count">{totalCount} active</span>
+        </div>
+      )}
+
+      {visibleItems.length === 0 ? (
+        <div className="no-items">
+          <strong>No matching reports</strong>
+          <p>Try another keyword or switch the item filter.</p>
+        </div>
+      ) : (
+        <div className="items-grid">
+          {visibleItems.map((item) => (
+            <article
+              key={item.id}
+              className={`item-card ${item.role === "lost" ? "lost-card" : "found-card"}`}
+            >
+              <div className="card-media">
+                {item.imageUrl ? (
+                  <img loading="lazy" src={item.imageUrl} alt={item.title || "Reported item"} />
+                ) : (
+                  <div className="card-image-placeholder" aria-hidden="true">
+                    <span>{iconForCategory(item.category)}</span>
+                    <small>No photo uploaded</small>
+                  </div>
+                )}
+
+                <div className="card-media__badges">
+                  <span className="status-badge">{item.role === "lost" ? "Lost" : "Found"}</span>
+                  <span className="lifecycle-badge">{lifecycleLabel(item.status)}</span>
+                </div>
+              </div>
+
+              <div className="card-body">
+                <div className="item-card__topline">
+                  <span className="item-category">{item.category || "Other"}</span>
+                  <span className="date">{formatDate(item.date || item.createdAt)}</span>
+                </div>
+
+                <h3 className="item-title">{item.title || "Unknown item"}</h3>
+
+                <p className="item-description">
+                  <TbFileDescription className="content-icon" />
+                  <span>{item.description || "No description provided."}</span>
+                </p>
+
+                <p className="item-location">
+                  <HiOutlineLocationMarker className="content-icon" />
+                  <span>{item.location || "Campus location not specified"}</span>
+                </p>
+              </div>
+
+              <div className="card-footer">
+                {onlyUserItems && item.owner_id === user?.id ? (
+                  <>
+                    <button className="remove-item-btn" onClick={() => handleRemoveItem(item)}>
+                      <MdDelete className="button-icon" /> Close
+                    </button>
+                    <button className="update-item-btn" onClick={() => handleUpdateItem(item)}>
+                      <MdEdit className="button-icon" /> Edit report
+                    </button>
+                  </>
+                ) : (
+                  <button className="contact-btn" onClick={handleContactClick}>
+                    <CiPhone className="button-icon" />
+                    {item.role === "found" ? "This might be mine" : "I found this"}
+                  </button>
+                )}
+              </div>
+            </article>
+          ))}
+        </div>
+      )}
+
+      {error && items.length > 0 && <div className="error items-inline-error"><p>{error}</p></div>}
+
+      {hasMore && (
+        <div className="items-pagination">
+          <button type="button" onClick={loadMore} disabled={loadingMore}>
+            {loadingMore ? "Loading…" : `Load more${remaining ? ` · ${remaining} remaining` : ""}`}
+          </button>
+        </div>
+      )}
     </div>
   );
 };
