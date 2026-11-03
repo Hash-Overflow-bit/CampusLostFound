@@ -594,3 +594,8 @@
     transform: none;
   }
 }
+
+
+.dashboard-explorer {
+  scroll-margin-top: 96px;
+}
