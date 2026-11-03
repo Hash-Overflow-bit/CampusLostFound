@@ -294,8 +294,6 @@ const ItemsList = ({
         ownerId: user.id,
         itemPatch,
         privateDetails: {
-          exact_location: null,
-          identifying_details: null,
           contact_email: updatedData.email || user.email || null,
           contact_phone: updatedData.phone || null,
         },
