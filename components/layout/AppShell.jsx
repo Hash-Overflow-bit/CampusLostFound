@@ -5,10 +5,12 @@ const Navbar = lazy(() => import("../../componenets/navbar/Navbar"));
 const Footer = lazy(() => import("../../componenets/footer/Footer"));
 
 const CHROMELESS_ROUTES = new Set(["/login", "/signup", "/forgot-password", "/update-password"]);
+const NO_FOOTER_ROUTES = new Set(["/dashboard", "/report"]);
 
 export default function AppShell({ children }) {
   const { pathname } = useLocation();
   const showChrome = !CHROMELESS_ROUTES.has(pathname);
+  const showFooter = showChrome && !NO_FOOTER_ROUTES.has(pathname);
 
   return (
     <div className="app-shell">
@@ -18,7 +20,7 @@ export default function AppShell({ children }) {
         </Suspense>
       )}
       <div className="app-shell__content">{children}</div>
-      {showChrome && (
+      {showFooter && (
         <Suspense fallback={null}>
           <Footer />
         </Suspense>
