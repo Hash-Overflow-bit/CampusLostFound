@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useCallback, useEffect, useMemo, useState } from "react";\nimport { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import {
   FiArrowUpRight,
   FiCheckCircle,
@@ -29,7 +29,7 @@ export default function Dashboard() {
   const { user, profile, campus } = useAuth();
   const [activeView, setActiveView] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
-  const [stats, setStats] = useState(EMPTY_STATS);
+  const [stats, setStats] = useState(EMPTY_STATS);\n  const [feedMeta, setFeedMeta] = useState({ total: 0, loaded: 0 });
 
   useEffect(() => {
     let active = true;
@@ -58,6 +58,40 @@ export default function Dashboard() {
   }, [profile?.display_name, user?.email]);
 
   const campusName = campus?.name || profile?.campuses?.name || "Your campus";
+
+  const requestedView = searchParams.get("view");
+  useEffect(() => {
+    if (["all", "lost", "found", "mine"].includes(requestedView)) {
+      setActiveView(requestedView);
+    } else {
+      setActiveView("all");
+    }
+  }, [requestedView]);
+
+  useEffect(() => {
+    if (location.hash === "#campus-feed") {
+      requestAnimationFrame(() => {
+        document.getElementById("campus-feed")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      });
+    }
+  }, [location.hash, activeView]);
+
+  const changeView = useCallback((view, scroll = true) => {
+    setActiveView(view);
+    const next = new URLSearchParams(searchParams);
+    if (view === "all") next.delete("view");
+    else next.set("view", view);
+    setSearchParams(next, { replace: true });
+    if (scroll) {
+      requestAnimationFrame(() => {
+        document.getElementById("campus-feed")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      });
+    }
+  }, [searchParams, setSearchParams]);
+
+  const handleFeedMeta = useCallback((meta) => {
+    setFeedMeta(meta);
+  }, []);
 
   const listFilter = activeView === "lost" || activeView === "found" ? activeView : "all";
   const onlyUserItems = activeView === "mine";
@@ -123,12 +157,12 @@ export default function Dashboard() {
           </div>
 
           <div className="dashboard-snapshot__grid">
-            <button type="button" onClick={() => setActiveView("mine")}>
+            <button type="button" onClick={() => changeView("mine")}>
               <span className="dashboard-stat-dot dashboard-stat-dot--lost" />
               <span>Lost reports</span>
               <strong>{stats.lost}</strong>
             </button>
-            <button type="button" onClick={() => setActiveView("mine")}>
+            <button type="button" onClick={() => changeView("mine")}>
               <span className="dashboard-stat-dot dashboard-stat-dot--found" />
               <span>Found reports</span>
               <strong>{stats.found}</strong>
@@ -142,7 +176,7 @@ export default function Dashboard() {
         </aside>
       </section>
 
-      <section className="dashboard-explorer" aria-labelledby="campus-feed-title">
+      <section id="campus-feed" className="dashboard-explorer" aria-labelledby="campus-feed-title">
         <header className="dashboard-explorer__header">
           <div>
             <p className="dashboard-section-kicker">Campus explorer</p>
@@ -152,7 +186,7 @@ export default function Dashboard() {
             <p>
               {activeView === "mine"
                 ? "Review, edit, or close the reports you have created."
-                : "Everything shown here belongs to your verified campus network."}
+                : `${feedMeta.total} active ${feedMeta.total === 1 ? "report" : "reports"} available in your verified campus network.`}
             </p>
           </div>
 
@@ -181,7 +215,7 @@ export default function Dashboard() {
               role="tab"
               aria-selected={activeView === id}
               className={activeView === id ? "is-active" : ""}
-              onClick={() => setActiveView(id)}
+              onClick={() => changeView(id, false)}
             >
               <Icon aria-hidden="true" />
               {label}
