@@ -10,9 +10,13 @@ import { matchesItemSearch } from "../../features/items/itemSearch";
 import {
   listItems,
   closeOwnedItem,
-  updateOwnedItem,
   ITEMS_PAGE_SIZE,
 } from "../../features/items/repositories/supabaseItemsRepository";
+import {
+  deleteOwnedReport,
+  getOwnedReportForEdit,
+  updateReport,
+} from "../../features/reports/repositories/supabaseReportRepository";
 import "./ItemsList.css";
 import "./HomeItemsMarquee.css";
 
@@ -95,6 +99,8 @@ const ItemsList = ({
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState(null);
   const [editingItem, setEditingItem] = useState(null);
+  const [editLoadingId, setEditLoadingId] = useState(null);
+  const [deletingId, setDeletingId] = useState(null);
   const debouncedSearch = useDebouncedValue(searchQuery, 300);
 
   const campusId = profile?.campus_id || null;
@@ -229,35 +235,85 @@ const ItemsList = ({
     }
   };
 
-  const handleUpdateItem = (item) => {
-    if (item.owner_id !== user?.id) return;
-    setEditingItem(item);
+  const handleUpdateItem = async (item) => {
+    if (!item?.id || item.owner_id !== user?.id || editLoadingId) return;
+
+    try {
+      setEditLoadingId(item.id);
+      const fullReport = await getOwnedReportForEdit(item.id, user.id);
+      setEditingItem(fullReport);
+    } catch (editError) {
+      console.error("Unable to load report for editing:", editError);
+      alert("Unable to open this report for editing. Please try again.");
+    } finally {
+      setEditLoadingId(null);
+    }
+  };
+
+  const handleDeleteItem = async (item) => {
+    if (!item?.id || item.owner_id !== user?.id || deletingId) return;
+
+    const confirmed = window.confirm(
+      `Delete "${item.title || "this report"}" permanently? This cannot be undone.`
+    );
+    if (!confirmed) return;
+
+    try {
+      setDeletingId(item.id);
+      const result = await deleteOwnedReport(item.id, user.id);
+      if (result.storageCleanupFailed) {
+        console.warn("Report deleted, but one or more storage objects need cleanup.");
+      }
+      setItems((previous) => previous.filter((currentItem) => currentItem.id !== item.id));
+      setTotalCount((count) => Math.max(0, count - 1));
+      if (editingItem?.id === item.id) setEditingItem(null);
+    } catch (deleteError) {
+      console.error("Unable to delete report:", deleteError);
+      alert("Unable to delete this report. Please try again.");
+    } finally {
+      setDeletingId(null);
+    }
   };
 
   const handleUpdateSubmit = async (updatedData) => {
     if (!editingItem?.id || !updatedData || editingItem.owner_id !== user?.id) return;
 
-    const patch = {
+    const itemPatch = {
       kind: updatedData.role,
       title: updatedData.title,
       category: updatedData.category,
+      color: updatedData.color || null,
       description: updatedData.description || null,
       public_location: updatedData.location || null,
       occurred_at: updatedData.date ? new Date(updatedData.date).toISOString() : null,
     };
 
     try {
-      await updateOwnedItem(editingItem.id, patch);
+      const updated = await updateReport({
+        itemId: editingItem.id,
+        ownerId: user.id,
+        itemPatch,
+        privateDetails: {
+          exact_location: null,
+          identifying_details: null,
+          contact_email: updatedData.email || user.email || null,
+          contact_phone: updatedData.phone || null,
+        },
+        image: updatedData.image || null,
+      });
+
       setItems((previous) => previous.map((item) => item.id === editingItem.id ? {
         ...item,
-        ...patch,
-        role: patch.kind,
-        location: patch.public_location,
-        date: patch.occurred_at,
+        ...itemPatch,
+        role: updated.role,
+        location: updated.location,
+        date: itemPatch.occurred_at,
+        imageUrl: updated.existingImageUrl || item.imageUrl,
       } : item));
       setEditingItem(null);
-    } catch {
-      alert("Failed to update item. Please try again.");
+    } catch (updateError) {
+      console.error("Failed to update report:", updateError);
+      throw updateError;
     }
   };
 
@@ -389,11 +445,29 @@ const ItemsList = ({
               <div className="card-footer">
                 {onlyUserItems && item.owner_id === user?.id ? (
                   <>
-                    <button className="remove-item-btn" onClick={() => handleRemoveItem(item)}>
-                      <MdDelete className="button-icon" /> Close
+                    <button
+                      className="close-item-btn"
+                      onClick={() => handleRemoveItem(item)}
+                      disabled={deletingId === item.id}
+                    >
+                      Close
                     </button>
-                    <button className="update-item-btn" onClick={() => handleUpdateItem(item)}>
-                      <MdEdit className="button-icon" /> Edit report
+                    <button
+                      className="update-item-btn"
+                      onClick={() => handleUpdateItem(item)}
+                      disabled={editLoadingId === item.id || deletingId === item.id}
+                    >
+                      <MdEdit className="button-icon" />
+                      {editLoadingId === item.id ? "Opening…" : "Edit"}
+                    </button>
+                    <button
+                      className="delete-item-btn"
+                      onClick={() => handleDeleteItem(item)}
+                      disabled={deletingId === item.id}
+                      aria-label={`Delete ${item.title || "report"} permanently`}
+                    >
+                      <MdDelete className="button-icon" />
+                      {deletingId === item.id ? "Deleting…" : "Delete"}
                     </button>
                   </>
                 ) : (
