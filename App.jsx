@@ -8,12 +8,26 @@ export default function App() {
   const { loading: authLoading } = useAuth();
 
   if (authLoading) {
-    return <MinimalLoader fullScreen={true} message="Initializing..." />;
+    return (
+      <MinimalLoader
+        fullScreen
+        message="Connecting your campus"
+        detail="Checking your secure session and campus network."
+      />
+    );
   }
 
   return (
     <AppShell>
-      <Suspense fallback={<MinimalLoader fullScreen={true} message="Loading..." />}>
+      <Suspense
+        fallback={
+          <MinimalLoader
+            fullScreen
+            message="Opening CampusLostFound"
+            detail="Loading the next part of your campus workspace."
+          />
+        }
+      >
         <AppRouter />
       </Suspense>
     </AppShell>
