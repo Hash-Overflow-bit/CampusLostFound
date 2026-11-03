@@ -29,17 +29,17 @@ export default function PhotoStep({ draft, updateField }) {
     }
   };
 
+  const displayImage = preview || draft.existingImageUrl || "";
+
   return (
     <div className="report-step">
-      <h3>Add a clear item photo</h3>
       <p className="report-step__hint">
-        Best result: a well-lit 4:3 photo around 1600×1200. JPEG, PNG, or WebP up to 12MB.
-        We automatically resize large photos to a maximum 1600px side and optimize them for fast loading.
+        A photo is optional, but it is the fastest way for another student to recognize the right item.
       </p>
 
       <label className="report-upload">
-        <span>{optimizing ? "Optimizing image…" : preview ? "Choose a different image" : "Choose image"}</span>
-        <small>Keep the item centered and avoid exposing private ownership evidence.</small>
+        <span>{optimizing ? "Optimizing image…" : displayImage ? "Replace photo" : "Add a photo"}</span>
+        <small>Best result: 4:3, well lit, item centered. Large images are optimized automatically.</small>
         <input
           type="file"
           accept="image/jpeg,image/png,image/webp"
@@ -51,14 +51,17 @@ export default function PhotoStep({ draft, updateField }) {
 
       {error && <p className="report-step__error">{error}</p>}
 
-      {preview && (
+      {displayImage ? (
         <div className="report-photo-frame">
-          <img className="report-photo-preview" src={preview} alt="Selected item preview" />
-          <span>Optimized for item cards</span>
+          <img className="report-photo-preview" src={displayImage} alt="Item preview" />
+          <span>{preview ? "New optimized photo" : "Current photo"}</span>
+        </div>
+      ) : (
+        <div className="report-photo-empty" aria-hidden="true">
+          <span>▧</span>
+          <p>No photo yet</p>
         </div>
       )}
-
-      {draft.image && !preview && <p>Existing image attached.</p>}
     </div>
   );
 }
