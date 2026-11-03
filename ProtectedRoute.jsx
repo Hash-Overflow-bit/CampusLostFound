@@ -8,15 +8,21 @@ const ProtectedRoute = ({ children, access = ACCESS.CAMPUS, allowedRoles = [] })
   const { isAuthenticated, isEmailVerified, hasTrustedCampus, role, loading } = useAuth();
   const location = useLocation();
 
-  if (loading) return <MinimalLoader fullScreen message="Checking your session..." />;
+  if (loading) {
+    return (
+      <MinimalLoader
+        fullScreen
+        message="Checking your campus access"
+        detail="Verifying your session without exposing private campus data."
+      />
+    );
+  }
 
   if (canAccessRoute({ access, isAuthenticated, isEmailVerified, hasTrustedCampus, role, allowedRoles })) {
     return children;
   }
 
   if (access === ACCESS.GUEST_ONLY && isAuthenticated) {
-    // Verified campus members go to their dashboard. Verified users whose campus has not been
-    // resolved stay outside campus workflows until trusted onboarding succeeds.
     return <Navigate to={isEmailVerified && hasTrustedCampus ? "/dashboard" : "/"} replace state={{ reason: isEmailVerified ? "campus-required" : "verify" }} />;
   }
 
