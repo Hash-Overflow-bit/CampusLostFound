@@ -52,6 +52,6 @@ export const validateReportImage = (file) => {
   if (!file) return true;
   const allowed = new Set(["image/jpeg", "image/png", "image/webp"]);
   if (!allowed.has(file.type)) throw new Error("Only JPEG, PNG, and WebP images are allowed.");
-  if (file.size > 10 * 1024 * 1024) throw new Error("Image must be 10MB or smaller.");
+  if (file.size > 12 * 1024 * 1024) throw new Error("Image must be 12MB or smaller before optimization.");
   return true;
 };
