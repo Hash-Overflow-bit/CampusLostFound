@@ -1,89 +1,221 @@
-import React, { useState } from "react";
-import ReportItemForm from "../componenets/reportForm/ReportItemForm";
+import React, { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import {
+  FiArrowUpRight,
+  FiCheckCircle,
+  FiGrid,
+  FiSearch,
+  FiUser,
+} from "react-icons/fi";
+import { HiOutlineLocationMarker } from "react-icons/hi";
+import { RiFindReplaceLine } from "react-icons/ri";
+import { TbReport, TbReportSearch } from "react-icons/tb";
 import ItemsList from "../componenets/items/ItemsList";
-import { TbReportAnalytics } from "react-icons/tb";
-import "./Dashboard.css";
-import { FaStackOverflow } from "react-icons/fa6";
-import { LuChartScatter } from "react-icons/lu";
-import { IoLogoDropbox } from "react-icons/io";
-import { RiPhoneFindFill } from "react-icons/ri";
-import { FaCheckCircle } from "react-icons/fa";
 import { useAuth } from "../AuthContext/AuthContext";
 import { getOwnedItemStats } from "../features/items/repositories/supabaseItemsRepository";
+import "./Dashboard.css";
 
-const Dashboard = () => {
+const EMPTY_STATS = { total: 0, found: 0, lost: 0 };
+
+const views = [
+  { id: "all", label: "All campus", icon: FiGrid },
+  { id: "lost", label: "Lost", icon: TbReportSearch },
+  { id: "found", label: "Found", icon: FiCheckCircle },
+  { id: "mine", label: "My reports", icon: FiUser },
+];
+
+export default function Dashboard() {
+  const navigate = useNavigate();
+  const { user, profile, campus } = useAuth();
+  const [activeView, setActiveView] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState("all");
-  const [showReportForm, setShowReportForm] = useState(false);
-  const [activeTab, setActiveTab] = useState("overview");
-  const [stats, setStats] = useState({ total: 0, found: 0, lost: 0 });
-  const { user } = useAuth();
+  const [stats, setStats] = useState(EMPTY_STATS);
 
-  React.useEffect(() => {
+  useEffect(() => {
     let active = true;
-    if (!user?.uid) {
-      setStats({ total: 0, found: 0, lost: 0 });
+    if (!user?.id) {
+      setStats(EMPTY_STATS);
       return () => { active = false; };
     }
 
-    getOwnedItemStats(user.uid)
-      .then((nextStats) => { if (active) setStats(nextStats); })
+    getOwnedItemStats(user.id)
+      .then((nextStats) => {
+        if (active) setStats(nextStats);
+      })
       .catch((error) => {
         console.error("Dashboard stats error:", error);
-        if (active) setStats({ total: 0, found: 0, lost: 0 });
+        if (active) setStats(EMPTY_STATS);
       });
 
     return () => { active = false; };
-  }, [user?.uid]);
+  }, [user?.id]);
+
+  const firstName = useMemo(() => {
+    const displayName = profile?.display_name?.trim();
+    if (displayName) return displayName.split(/\s+/)[0];
+    const emailName = user?.email?.split("@")[0] || "there";
+    return emailName.replace(/[._-]+/g, " ");
+  }, [profile?.display_name, user?.email]);
+
+  const campusName = campus?.name || profile?.campuses?.name || "Your campus";
+
+  const listFilter = activeView === "lost" || activeView === "found" ? activeView : "all";
+  const onlyUserItems = activeView === "mine";
+
+  const reportItem = (kind) => {
+    navigate("/report", { state: { kind, from: "/dashboard" } });
+  };
 
   return (
-    <>
-      <div className="dashboard-main-container">
-        <div className="dashboard-img"></div>
-        <div className="dashboard-heading heading">
-          <h1>Campus Lost & Found</h1>
-          <p>Connect students with their missing belongings</p>
-          <div className="reportform-btn-container">
-            <button className="hero-btn-primary" onClick={() => { setActiveTab("report"); setShowReportForm(true); }}>
-              Report Item
-            </button>
+    <main className="dashboard-page">
+      <section className="dashboard-hero" aria-labelledby="dashboard-title">
+        <div className="dashboard-hero__copy">
+          <div className="dashboard-campus-pill">
+            <HiOutlineLocationMarker aria-hidden="true" />
+            <span>{campusName}</span>
+            <span className="dashboard-campus-pill__verified">Verified network</span>
           </div>
-        </div>
-        <div className="dashboard-filterbtn-main-container">
-          <div className="dashboard-filter-btns" style={{ display: "flex", gap: "1rem", justifyContent: "center", margin: "2rem 0" }}>
-            <button className={activeTab === "overview" ? "active all" : ""} onClick={() => setActiveTab("overview")}>
-              <LuChartScatter /> Overview
-            </button>
-            <button className={activeTab === "all" ? "active found-filter" : ""} onClick={() => setActiveTab("all")}>
-              <FaStackOverflow /> All Items
-            </button>
-            <button className={activeTab === "report" ? "active lost-filter" : ""} onClick={() => { setActiveTab("report"); setShowReportForm(true); }}>
-              <TbReportAnalytics /> Report
-            </button>
-          </div>
-        </div>
-      </div>
 
-      {activeTab === "overview" && (
-        <section style={{ textAlign: "center", margin: "2rem 0" }}>
-          <div className="stats-main-container">
-            <div className="stats-container stat-container1"><div className="title-icon"><div className="titlel">Total Items</div><div className="icon"><IoLogoDropbox /></div></div><div className="stats-count">{stats.total}</div></div>
-            <div className="stats-container stat-container2"><div className="title-icon"><div className="titlel">Found Items</div><div className="icon"><FaCheckCircle /></div></div><div className="stats-count">{stats.found}</div></div>
-            <div className="stats-container stat-container3"><div className="title-icon"><div className="titlel">Lost Items</div><div className="icon"><RiPhoneFindFill /></div></div><div className="stats-count">{stats.lost}</div></div>
+          <p className="dashboard-kicker">Welcome back, {firstName}</p>
+          <h1 id="dashboard-title">
+            Find what matters.
+            <span>Your campus is looking too.</span>
+          </h1>
+          <p className="dashboard-intro">
+            Browse active reports from your campus, search by item or location,
+            and report something lost or found in a few steps.
+          </p>
+
+          <div className="dashboard-hero__actions">
+            <button
+              type="button"
+              className="dashboard-action dashboard-action--lost"
+              onClick={() => reportItem("lost")}
+            >
+              <span className="dashboard-action__icon"><TbReport aria-hidden="true" /></span>
+              <span>
+                <small>Can’t find something?</small>
+                Report lost item
+              </span>
+              <FiArrowUpRight aria-hidden="true" />
+            </button>
+
+            <button
+              type="button"
+              className="dashboard-action dashboard-action--found"
+              onClick={() => reportItem("found")}
+            >
+              <span className="dashboard-action__icon"><RiFindReplaceLine aria-hidden="true" /></span>
+              <span>
+                <small>Picked something up?</small>
+                Report found item
+              </span>
+              <FiArrowUpRight aria-hidden="true" />
+            </button>
           </div>
-          <div className="filter-container">
-            <input type="text" placeholder="Search your items..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} style={{ padding: "0.6rem 1rem", borderRadius: "8px", border: "1px solid #ccc", minWidth: "220px" }} />
-            <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} style={{ padding: "0.6rem 1rem", borderRadius: "8px", border: "1px solid #ccc" }}>
-              <option value="all">All</option><option value="lost">Lost</option><option value="found">Found</option>
-            </select>
+        </div>
+
+        <aside className="dashboard-snapshot" aria-label="Your report summary">
+          <div className="dashboard-snapshot__heading">
+            <span>Your activity</span>
+            <strong>{stats.total}</strong>
+            <p>active {stats.total === 1 ? "report" : "reports"}</p>
           </div>
-          <ItemsList onlyUserItems={true} searchQuery={searchQuery} filter={statusFilter} />
-        </section>
-      )}
-      {activeTab === "all" && <section style={{ textAlign: "center", margin: "2rem 0" }}><ItemsList onlyUserItems={true} /></section>}
-      {activeTab === "report" && showReportForm && <section className="report-form-section"><ReportItemForm onClose={() => setShowReportForm(false)} /></section>}
-    </>
+
+          <div className="dashboard-snapshot__grid">
+            <button type="button" onClick={() => setActiveView("mine")}>
+              <span className="dashboard-stat-dot dashboard-stat-dot--lost" />
+              <span>Lost reports</span>
+              <strong>{stats.lost}</strong>
+            </button>
+            <button type="button" onClick={() => setActiveView("mine")}>
+              <span className="dashboard-stat-dot dashboard-stat-dot--found" />
+              <span>Found reports</span>
+              <strong>{stats.found}</strong>
+            </button>
+          </div>
+
+          <div className="dashboard-snapshot__note">
+            <FiCheckCircle aria-hidden="true" />
+            <p><strong>Campus-only discovery.</strong> Private contact details stay protected.</p>
+          </div>
+        </aside>
+      </section>
+
+      <section className="dashboard-explorer" aria-labelledby="campus-feed-title">
+        <header className="dashboard-explorer__header">
+          <div>
+            <p className="dashboard-section-kicker">Campus explorer</p>
+            <h2 id="campus-feed-title">
+              {activeView === "mine" ? "Your active reports" : "Active campus reports"}
+            </h2>
+            <p>
+              {activeView === "mine"
+                ? "Review, edit, or close the reports you have created."
+                : "Everything shown here belongs to your verified campus network."}
+            </p>
+          </div>
+
+          <div className="dashboard-search">
+            <FiSearch aria-hidden="true" />
+            <input
+              type="search"
+              value={searchQuery}
+              onChange={(event) => setSearchQuery(event.target.value)}
+              placeholder="Search item, category or location"
+              aria-label="Search campus reports"
+            />
+            {searchQuery && (
+              <button type="button" onClick={() => setSearchQuery("")} aria-label="Clear search">
+                ×
+              </button>
+            )}
+          </div>
+        </header>
+
+        <div className="dashboard-viewbar" role="tablist" aria-label="Filter campus reports">
+          {views.map(({ id, label, icon: Icon }) => (
+            <button
+              key={id}
+              type="button"
+              role="tab"
+              aria-selected={activeView === id}
+              className={activeView === id ? "is-active" : ""}
+              onClick={() => setActiveView(id)}
+            >
+              <Icon aria-hidden="true" />
+              {label}
+            </button>
+          ))}
+        </div>
+
+        <div className="dashboard-feed">
+          <ItemsList
+            onlyUserItems={onlyUserItems}
+            searchQuery={searchQuery}
+            filter={listFilter}
+            showHeader={false}
+          />
+        </div>
+      </section>
+
+      <section className="dashboard-guide" aria-label="Recovery flow">
+        <div>
+          <span>01</span>
+          <h3>Browse first</h3>
+          <p>Search active campus reports before creating a duplicate.</p>
+        </div>
+        <div>
+          <span>02</span>
+          <h3>Report clearly</h3>
+          <p>Add the public details another student would recognize.</p>
+        </div>
+        <div>
+          <span>03</span>
+          <h3>Recover safely</h3>
+          <p>Keep sensitive contact and exact-location details private.</p>
+        </div>
+      </section>
+    </main>
   );
-};
-
-export default Dashboard;
+}
