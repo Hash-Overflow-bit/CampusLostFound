@@ -48,6 +48,37 @@ const lifecycleLabel = (status) => ({
   closed: "Closed",
 }[status] || "Active");
 
+const ItemsSkeleton = ({ count = 6 }) => (
+  <div className="items-skeleton" aria-label="Loading campus reports" role="status">
+    <div className="items-skeleton__top">
+      <span className="skeleton-line skeleton-line--eyebrow" />
+      <span className="skeleton-line skeleton-line--title" />
+    </div>
+    <div className="items-skeleton__grid">
+      {Array.from({ length: count }).map((_, index) => (
+        <article
+          key={index}
+          className={`item-skeleton-card ${index % 3 === 1 ? "is-found" : "is-lost"}`}
+          aria-hidden="true"
+        >
+          <div className="item-skeleton-card__media">
+            <span className="skeleton-chip" />
+            <span className="skeleton-chip skeleton-chip--small" />
+          </div>
+          <div className="item-skeleton-card__body">
+            <span className="skeleton-line skeleton-line--small" />
+            <span className="skeleton-line skeleton-line--card-title" />
+            <span className="skeleton-line skeleton-line--copy" />
+            <span className="skeleton-line skeleton-line--copy skeleton-line--short" />
+            <span className="skeleton-line skeleton-line--button" />
+          </div>
+        </article>
+      ))}
+    </div>
+    <span className="sr-loading-text">Loading campus reports…</span>
+  </div>
+);
+
 const ItemsList = ({
   searchQuery = "",
   onlyUserItems = false,
@@ -232,8 +263,8 @@ const ItemsList = ({
 
   if (authLoading || loading) {
     return (
-      <div className="items-list-container">
-        <div className="loading"><div className="spinner" /><p>Loading campus items...</p></div>
+      <div className="items-list-container items-list-container--loading">
+        <ItemsSkeleton count={isHomePage ? 4 : 6} />
       </div>
     );
   }
@@ -382,7 +413,14 @@ const ItemsList = ({
       {hasMore && (
         <div className="items-pagination">
           <button type="button" onClick={loadMore} disabled={loadingMore}>
-            {loadingMore ? "Loading…" : `Load more${remaining ? ` · ${remaining} remaining` : ""}`}
+            {loadingMore ? (
+              <span className="load-more-state">
+                <span className="load-more-dots" aria-hidden="true"><i /><i /><i /></span>
+                Loading more
+              </span>
+            ) : (
+              `Load more${remaining ? ` · ${remaining} remaining` : ""}`
+            )}
           </button>
         </div>
       )}
