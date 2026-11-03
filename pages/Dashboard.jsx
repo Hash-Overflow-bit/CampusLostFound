@@ -1,5 +1,5 @@
-import React, { useEffect, useMemo, useState } from "react";
-import { useCallback, useEffect, useMemo, useState } from "react";\nimport { useLocation, useNavigate, useSearchParams } from "react-router-dom";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import {
   FiArrowUpRight,
   FiCheckCircle,
@@ -16,6 +16,7 @@ import { getOwnedItemStats } from "../features/items/repositories/supabaseItemsR
 import "./Dashboard.css";
 
 const EMPTY_STATS = { total: 0, found: 0, lost: 0 };
+const ALLOWED_VIEWS = new Set(["all", "lost", "found", "mine"]);
 
 const views = [
   { id: "all", label: "All campus", icon: FiGrid },
@@ -26,13 +27,21 @@ const views = [
 
 export default function Dashboard() {
   const navigate = useNavigate();
+  const location = useLocation();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { user, profile, campus } = useAuth();
-  const [activeView, setActiveView] = useState("all");
+
+  const requestedView = searchParams.get("view");
+  const [activeView, setActiveView] = useState(
+    ALLOWED_VIEWS.has(requestedView) ? requestedView : "all"
+  );
   const [searchQuery, setSearchQuery] = useState("");
-  const [stats, setStats] = useState(EMPTY_STATS);\n  const [feedMeta, setFeedMeta] = useState({ total: 0, loaded: 0 });
+  const [stats, setStats] = useState(EMPTY_STATS);
+  const [feedMeta, setFeedMeta] = useState({ total: 0, loaded: 0 });
 
   useEffect(() => {
     let active = true;
+
     if (!user?.id) {
       setStats(EMPTY_STATS);
       return () => { active = false; };
@@ -50,41 +59,46 @@ export default function Dashboard() {
     return () => { active = false; };
   }, [user?.id]);
 
+  useEffect(() => {
+    setActiveView(ALLOWED_VIEWS.has(requestedView) ? requestedView : "all");
+  }, [requestedView]);
+
+  useEffect(() => {
+    if (location.hash !== "#campus-feed") return;
+    requestAnimationFrame(() => {
+      document.getElementById("campus-feed")?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+    });
+  }, [location.hash, activeView]);
+
   const firstName = useMemo(() => {
     const displayName = profile?.display_name?.trim();
     if (displayName) return displayName.split(/\s+/)[0];
+
     const emailName = user?.email?.split("@")[0] || "there";
     return emailName.replace(/[._-]+/g, " ");
   }, [profile?.display_name, user?.email]);
 
   const campusName = campus?.name || profile?.campuses?.name || "Your campus";
-
-  const requestedView = searchParams.get("view");
-  useEffect(() => {
-    if (["all", "lost", "found", "mine"].includes(requestedView)) {
-      setActiveView(requestedView);
-    } else {
-      setActiveView("all");
-    }
-  }, [requestedView]);
-
-  useEffect(() => {
-    if (location.hash === "#campus-feed") {
-      requestAnimationFrame(() => {
-        document.getElementById("campus-feed")?.scrollIntoView({ behavior: "smooth", block: "start" });
-      });
-    }
-  }, [location.hash, activeView]);
+  const listFilter = activeView === "lost" || activeView === "found" ? activeView : "all";
+  const onlyUserItems = activeView === "mine";
 
   const changeView = useCallback((view, scroll = true) => {
     setActiveView(view);
+
     const next = new URLSearchParams(searchParams);
     if (view === "all") next.delete("view");
     else next.set("view", view);
     setSearchParams(next, { replace: true });
+
     if (scroll) {
       requestAnimationFrame(() => {
-        document.getElementById("campus-feed")?.scrollIntoView({ behavior: "smooth", block: "start" });
+        document.getElementById("campus-feed")?.scrollIntoView({
+          behavior: "smooth",
+          block: "start",
+        });
       });
     }
   }, [searchParams, setSearchParams]);
@@ -92,9 +106,6 @@ export default function Dashboard() {
   const handleFeedMeta = useCallback((meta) => {
     setFeedMeta(meta);
   }, []);
-
-  const listFilter = activeView === "lost" || activeView === "found" ? activeView : "all";
-  const onlyUserItems = activeView === "mine";
 
   const reportItem = (kind) => {
     navigate("/report", { state: { kind, from: "/dashboard" } });
@@ -115,6 +126,7 @@ export default function Dashboard() {
             Find what matters.
             <span>Your campus is looking too.</span>
           </h1>
+
           <p className="dashboard-intro">
             Browse active reports from your campus, search by item or location,
             and report something lost or found in a few steps.
@@ -162,6 +174,7 @@ export default function Dashboard() {
               <span>Lost reports</span>
               <strong>{stats.lost}</strong>
             </button>
+
             <button type="button" onClick={() => changeView("mine")}>
               <span className="dashboard-stat-dot dashboard-stat-dot--found" />
               <span>Found reports</span>
@@ -176,7 +189,11 @@ export default function Dashboard() {
         </aside>
       </section>
 
-      <section id="campus-feed" className="dashboard-explorer" aria-labelledby="campus-feed-title">
+      <section
+        id="campus-feed"
+        className="dashboard-explorer"
+        aria-labelledby="campus-feed-title"
+      >
         <header className="dashboard-explorer__header">
           <div>
             <p className="dashboard-section-kicker">Campus explorer</p>
@@ -185,7 +202,7 @@ export default function Dashboard() {
             </h2>
             <p>
               {activeView === "mine"
-                ? "Review, edit, or close the reports you have created."
+                ? `${feedMeta.total} active ${feedMeta.total === 1 ? "report" : "reports"} created by you.`
                 : `${feedMeta.total} active ${feedMeta.total === 1 ? "report" : "reports"} available in your verified campus network.`}
             </p>
           </div>
@@ -229,6 +246,7 @@ export default function Dashboard() {
             searchQuery={searchQuery}
             filter={listFilter}
             showHeader={false}
+            onMetaChange={handleFeedMeta}
           />
         </div>
       </section>
