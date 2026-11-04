@@ -11,6 +11,7 @@ import { HiOutlineLocationMarker } from "react-icons/hi";
 import { RiFindReplaceLine } from "react-icons/ri";
 import { TbReport, TbReportSearch } from "react-icons/tb";
 import ItemsList from "../componenets/items/ItemsList";
+import StatePanel from "../components/state/StatePanel";
 import { useAuth } from "../AuthContext/AuthContext";
 import { getOwnedItemStats } from "../features/items/repositories/supabaseItemsRepository";
 import "./Dashboard.css";
@@ -37,27 +38,36 @@ export default function Dashboard() {
   );
   const [searchQuery, setSearchQuery] = useState("");
   const [stats, setStats] = useState(EMPTY_STATS);
-  const [feedMeta, setFeedMeta] = useState({ total: 0, loaded: 0 });
+  const [statsState, setStatsState] = useState({ loading: true, error: "" });
+  const [statsRetryKey, setStatsRetryKey] = useState(0);
+  const [feedMeta, setFeedMeta] = useState({ total: 0, loaded: 0, loading: true, error: "" });
 
   useEffect(() => {
     let active = true;
 
     if (!user?.id) {
       setStats(EMPTY_STATS);
+      setStatsState({ loading: false, error: "" });
       return () => { active = false; };
     }
 
+    setStatsState({ loading: true, error: "" });
     getOwnedItemStats(user.id)
       .then((nextStats) => {
-        if (active) setStats(nextStats);
+        if (!active) return;
+        setStats(nextStats);
+        setStatsState({ loading: false, error: "" });
       })
       .catch((error) => {
         console.error("Dashboard stats error:", error);
-        if (active) setStats(EMPTY_STATS);
+        if (active) setStatsState({
+          loading: false,
+          error: "Your report summary could not be refreshed.",
+        });
       });
 
     return () => { active = false; };
-  }, [user?.id]);
+  }, [user?.id, statsRetryKey]);
 
   useEffect(() => {
     setActiveView(ALLOWED_VIEWS.has(requestedView) ? requestedView : "all");
@@ -104,7 +114,7 @@ export default function Dashboard() {
   }, [searchParams, setSearchParams]);
 
   const handleFeedMeta = useCallback((meta) => {
-    setFeedMeta(meta);
+    setFeedMeta((current) => ({ ...current, ...meta }));
   }, []);
 
   const reportItem = (kind) => {
@@ -164,28 +174,44 @@ export default function Dashboard() {
         <aside className="dashboard-snapshot" aria-label="Your report summary">
           <div className="dashboard-snapshot__heading">
             <span>Your activity</span>
-            <strong>{stats.total}</strong>
-            <p>active {stats.total === 1 ? "report" : "reports"}</p>
+            <strong>{statsState.loading ? "—" : statsState.error ? "!" : stats.total}</strong>
+            <p>
+              {statsState.loading
+                ? "refreshing activity"
+                : statsState.error
+                  ? "summary unavailable"
+                  : `active ${stats.total === 1 ? "report" : "reports"}`}
+            </p>
           </div>
 
           <div className="dashboard-snapshot__grid">
             <button type="button" onClick={() => changeView("mine")}>
               <span className="dashboard-stat-dot dashboard-stat-dot--lost" />
               <span>Lost reports</span>
-              <strong>{stats.lost}</strong>
+              <strong>{statsState.loading || statsState.error ? "—" : stats.lost}</strong>
             </button>
 
             <button type="button" onClick={() => changeView("mine")}>
               <span className="dashboard-stat-dot dashboard-stat-dot--found" />
               <span>Found reports</span>
-              <strong>{stats.found}</strong>
+              <strong>{statsState.loading || statsState.error ? "—" : stats.found}</strong>
             </button>
           </div>
 
-          <div className="dashboard-snapshot__note">
-            <FiCheckCircle aria-hidden="true" />
-            <p><strong>Campus-only discovery.</strong> Private contact details stay protected.</p>
-          </div>
+          {statsState.error ? (
+            <StatePanel
+              compact
+              tone="error"
+              title="Activity summary unavailable"
+              description="Your campus feed still works. Retry only the summary."
+              action={{ label: "Retry summary", onClick: () => setStatsRetryKey((value) => value + 1) }}
+            />
+          ) : (
+            <div className="dashboard-snapshot__note">
+              <FiCheckCircle aria-hidden="true" />
+              <p><strong>Campus-only discovery.</strong> Private contact details stay protected.</p>
+            </div>
+          )}
         </aside>
       </section>
 
@@ -201,9 +227,13 @@ export default function Dashboard() {
               {activeView === "mine" ? "Your active reports" : "Active campus reports"}
             </h2>
             <p>
-              {activeView === "mine"
-                ? `${feedMeta.total} active ${feedMeta.total === 1 ? "report" : "reports"} created by you.`
-                : `${feedMeta.total} active ${feedMeta.total === 1 ? "report" : "reports"} available in your verified campus network.`}
+              {feedMeta.loading
+                ? "Refreshing the latest campus reports…"
+                : feedMeta.error
+                  ? "The report count is temporarily unavailable."
+                  : activeView === "mine"
+                    ? `${feedMeta.total} active ${feedMeta.total === 1 ? "report" : "reports"} created by you.`
+                    : `${feedMeta.total} active ${feedMeta.total === 1 ? "report" : "reports"} available in your verified campus network.`}
             </p>
           </div>
 
