@@ -1,10 +1,12 @@
 import { useEffect, useState } from "react";
 import { compressReportImage } from "../../services/imageService";
+import StatePanel from "../../../../components/state/StatePanel";
 
 export default function PhotoStep({ draft, updateField }) {
   const [preview, setPreview] = useState("");
   const [error, setError] = useState("");
   const [optimizing, setOptimizing] = useState(false);
+  const [previewFailed, setPreviewFailed] = useState(false);
 
   useEffect(() => () => {
     if (preview) URL.revokeObjectURL(preview);
@@ -16,6 +18,7 @@ export default function PhotoStep({ draft, updateField }) {
 
     try {
       setError("");
+      setPreviewFailed(false);
       setOptimizing(true);
       const prepared = await compressReportImage(file);
 
@@ -29,7 +32,7 @@ export default function PhotoStep({ draft, updateField }) {
     }
   };
 
-  const displayImage = preview || draft.existingImageUrl || "";
+  const displayImage = previewFailed ? "" : preview || draft.existingImageUrl || "";
 
   return (
     <div className="report-step">
@@ -49,11 +52,34 @@ export default function PhotoStep({ draft, updateField }) {
         />
       </label>
 
+      {optimizing && (
+        <StatePanel
+          compact
+          tone="info"
+          title="Optimizing photo"
+          description="Compressing the image for a faster campus feed without changing your original file."
+        />
+      )}
+
       {error && <p className="report-step__error">{error}</p>}
+
+      {previewFailed && (
+        <StatePanel
+          compact
+          tone="warning"
+          title="Photo preview unavailable"
+          description="The report can still be saved. Choose Replace photo if you want to upload another image."
+        />
+      )}
 
       {displayImage ? (
         <div className="report-photo-frame">
-          <img className="report-photo-preview" src={displayImage} alt="Item preview" />
+          <img
+            className="report-photo-preview"
+            src={displayImage}
+            alt="Item preview"
+            onError={() => setPreviewFailed(true)}
+          />
           <span>{preview ? "New optimized photo" : "Current photo"}</span>
         </div>
       ) : (
