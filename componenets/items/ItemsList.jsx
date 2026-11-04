@@ -247,7 +247,11 @@ const ItemsList = ({
       setOperationNotice(null);
       await closeOwnedItem(item.id);
       setItems((previous) => previous.filter((current) => current.id !== item.id));
-      setTotalCount((count) => Math.max(0, count - 1));
+      setTotalCount((count) => {
+        const next = Math.max(0, count - 1);
+        onMetaChange?.({ total: next });
+        return next;
+      });
       setOperationNotice({
         tone: "success",
         title: "Report closed",
@@ -300,7 +304,11 @@ const ItemsList = ({
         console.warn("Report deleted, but one or more storage objects need cleanup.");
       }
       setItems((previous) => previous.filter((currentItem) => currentItem.id !== item.id));
-      setTotalCount((count) => Math.max(0, count - 1));
+      setTotalCount((count) => {
+        const next = Math.max(0, count - 1);
+        onMetaChange?.({ total: next });
+        return next;
+      });
       if (editingItem?.id === item.id) setEditingItem(null);
       setConfirmingDeleteId(null);
       setOperationNotice({
@@ -356,6 +364,11 @@ const ItemsList = ({
         imageUrl: updated.existingImageUrl || item.imageUrl,
       } : item));
       setEditingItem(null);
+      setOperationNotice({
+        tone: "success",
+        title: "Report updated",
+        message: `"${updatedData.title || "Report"}" is live with your latest changes.`,
+      });
     } catch (updateError) {
       console.error("Failed to update report:", updateError);
       throw updateError;
@@ -517,7 +530,7 @@ const ItemsList = ({
                 ) : (
                   <div className="card-image-placeholder" aria-hidden="true">
                     <span>{iconForCategory(item.category)}</span>
-                    <small>No photo uploaded</small>
+                    <small>{imageFailures[item.id] ? "Photo unavailable" : "No photo uploaded"}</small>
                   </div>
                 )}
 
@@ -623,7 +636,7 @@ const ItemsList = ({
         />
       )}
 
-      {hasMore && (
+      {hasMore && !loadMoreError && (
         <div className="items-pagination">
           <button type="button" onClick={loadMore} disabled={loadingMore}>
             {loadingMore ? (
