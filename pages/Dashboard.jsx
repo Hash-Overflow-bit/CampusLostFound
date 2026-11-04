@@ -277,6 +277,7 @@ export default function Dashboard() {
             filter={listFilter}
             showHeader={false}
             onMetaChange={handleFeedMeta}
+            onClearSearch={() => setSearchQuery("")}
           />
         </div>
       </section>
