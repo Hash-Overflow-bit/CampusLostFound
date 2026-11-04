@@ -1,0 +1,13 @@
+.not-found-page {
+  min-height: calc(100vh - 76px);
+  display: grid;
+  place-items: center;
+  padding: clamp(1rem, 4vw, 3rem);
+  background:
+    radial-gradient(circle at 12% 12%, rgba(255,229,0,.16), transparent 22rem),
+    #f8f7ef;
+}
+
+.not-found-page .state-panel {
+  max-width: 680px;
+}
