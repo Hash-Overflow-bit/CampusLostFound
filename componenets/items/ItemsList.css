@@ -700,3 +700,78 @@
     grid-template-columns: .7fr 1fr 1fr;
   }
 }
+
+
+.items-operation-state {
+  margin-bottom: 1rem;
+}
+
+.item-delete-confirm {
+  display: grid;
+  gap: .8rem;
+  margin: 0 .85rem .85rem;
+  padding: .9rem;
+  border: 1px solid rgba(217,66,47,.2);
+  border-radius: 18px;
+  background: #fff0ec;
+  color: #17105e;
+}
+
+.item-delete-confirm > div:first-child {
+  display: grid;
+  gap: .22rem;
+}
+
+.item-delete-confirm strong {
+  color: #a52a1d;
+  font-size: .86rem;
+}
+
+.item-delete-confirm span {
+  color: #68647d;
+  font-size: .76rem;
+  line-height: 1.45;
+}
+
+.item-delete-confirm__actions {
+  display: flex;
+  gap: .5rem;
+}
+
+.item-delete-confirm__actions button {
+  flex: 1;
+  min-height: 38px;
+  border-radius: 12px;
+  font: inherit;
+  font-size: .76rem;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.item-delete-confirm__cancel {
+  border: 1px solid rgba(23,16,94,.12);
+  background: #fff;
+  color: #17105e;
+}
+
+.item-delete-confirm__confirm {
+  border: 0;
+  background: #d9422f;
+  color: #fff;
+}
+
+.item-delete-confirm__actions button:disabled {
+  opacity: .55;
+  cursor: not-allowed;
+}
+
+.items-list-container > .state-panel + .items-pagination,
+.items-list-container > .items-grid + .state-panel {
+  margin-top: 1rem;
+}
+
+@media (max-width: 640px) {
+  .item-delete-confirm__actions {
+    flex-direction: column;
+  }
+}
