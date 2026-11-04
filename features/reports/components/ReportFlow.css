@@ -791,3 +791,25 @@
     transform: none;
   }
 }
+
+
+.report-flow__workspace > .state-panel {
+  margin: 0 clamp(1rem, 3vw, 2rem) 1rem;
+}
+
+.report-flow__close:disabled,
+.report-flow__continue:disabled,
+.report-flow__back:disabled {
+  opacity: .55;
+  cursor: not-allowed;
+}
+
+.report-flow[aria-busy="true"] .report-flow__step-body {
+  pointer-events: none;
+}
+
+@media (max-width: 700px) {
+  .report-flow__workspace > .state-panel {
+    margin-inline: .8rem;
+  }
+}
