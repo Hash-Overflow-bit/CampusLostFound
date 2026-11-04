@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "../../../AuthContext/AuthContext";
 import { useReportDraft } from "../hooks/useReportDraft";
 import { validateReport } from "../reportValidation";
@@ -8,6 +8,7 @@ import LocationStep from "./steps/LocationStep";
 import PhotoStep from "./steps/PhotoStep";
 import ContactStep from "./steps/ContactStep";
 import ReviewStep from "./steps/ReviewStep";
+import StatePanel from "../../../components/state/StatePanel";
 import "./ReportFlow.css";
 
 const steps = [
@@ -57,6 +58,18 @@ export default function ReportFlow({ initialData, onCancel, onComplete }) {
   const [step, setStep] = useState(0);
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [online, setOnline] = useState(() => typeof navigator === "undefined" ? true : navigator.onLine);
+
+  useEffect(() => {
+    const handleOnline = () => setOnline(true);
+    const handleOffline = () => setOnline(false);
+    window.addEventListener("online", handleOnline);
+    window.addEventListener("offline", handleOffline);
+    return () => {
+      window.removeEventListener("online", handleOnline);
+      window.removeEventListener("offline", handleOffline);
+    };
+  }, []);
 
   const currentStep = steps[step];
   const Step = currentStep.Component;
@@ -87,6 +100,10 @@ export default function ReportFlow({ initialData, onCancel, onComplete }) {
 
   const submit = async () => {
     if (submitting) return;
+    if (!online) {
+      setError("You’re offline. Your draft is still here; reconnect before saving the report.");
+      return;
+    }
 
     try {
       setSubmitting(true);
@@ -105,6 +122,7 @@ export default function ReportFlow({ initialData, onCancel, onComplete }) {
     <section
       className={`report-flow report-flow--${roleTone}`}
       aria-labelledby="report-flow-title"
+      aria-busy={submitting}
     >
       <aside className="report-flow__rail" aria-label="Report progress">
         <div className="report-flow__rail-brand">
@@ -124,7 +142,7 @@ export default function ReportFlow({ initialData, onCancel, onComplete }) {
                 <button
                   type="button"
                   onClick={() => jumpTo(index)}
-                  disabled={!completed}
+                  disabled={!completed || submitting}
                   aria-current={active ? "step" : undefined}
                 >
                   <span>{completed ? "✓" : index + 1}</span>
@@ -162,6 +180,7 @@ export default function ReportFlow({ initialData, onCancel, onComplete }) {
             type="button"
             className="report-flow__close"
             onClick={onCancel}
+            disabled={submitting}
             aria-label="Close report form"
           >
             ×
@@ -172,7 +191,16 @@ export default function ReportFlow({ initialData, onCancel, onComplete }) {
           <span style={{ width: `${progress}%` }} />
         </div>
 
-        {error && <div className="report-flow__error" role="alert">{error}</div>}
+        {!online && (
+          <StatePanel
+            compact
+            tone="warning"
+            title="You’re offline"
+            description="You can keep reviewing this draft, but publishing and updates need an internet connection."
+          />
+        )}
+
+        {error && <div className="report-flow__error" role="alert">{error}</div>
 
         <div className="report-flow__step-body" key={step}>
           <Step draft={draft} updateField={updateField} />
@@ -188,7 +216,7 @@ export default function ReportFlow({ initialData, onCancel, onComplete }) {
           </div>
 
           {step < steps.length - 1 ? (
-            <button type="button" className="report-flow__continue" onClick={next}>
+            <button type="button" className="report-flow__continue" onClick={next} disabled={submitting}>
               Continue <span>→</span>
             </button>
           ) : (
