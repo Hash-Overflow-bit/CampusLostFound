@@ -19,6 +19,7 @@ const Universities = lazy(() => import("../pages/Universities"));
 const UniversityDetail = lazy(() => import("../pages/UniversityDetail"));
 const PrivacyPolicy = lazy(() => import("../pages/PrivacyPolicy"));
 const TermsOfService = lazy(() => import("../pages/TermsOfService"));
+const NotFound = lazy(() => import("../pages/NotFound"));
 
 const Placeholder = ({ children }) => <main>{children}</main>;
 const GuestOnly = ({ children }) => <ProtectedRoute access={ACCESS.GUEST_ONLY}>{children}</ProtectedRoute>;
@@ -45,7 +46,7 @@ export default function AppRouter() {
       <Route path="/demo" element={<ReportDemo />} />
       <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
       <Route path="/report" element={<ProtectedRoute><Report /></ProtectedRoute>} />
-      <Route path="*" element={<Placeholder>404 - Page Not Found</Placeholder>} />
+      <Route path="*" element={<NotFound />} />
     </Routes>
   );
 }
