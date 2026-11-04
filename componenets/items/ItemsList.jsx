@@ -1,10 +1,12 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { MdDelete, MdEdit } from "react-icons/md";
 import { CiPhone } from "react-icons/ci";
 import { HiOutlineLocationMarker } from "react-icons/hi";
 import { TbFileDescription } from "react-icons/tb";
 import { useAuth } from "../../AuthContext/AuthContext";
 import ReportFlow from "../../features/reports/components/ReportFlow";
+import StatePanel from "../../components/state/StatePanel";
 import { useDebouncedValue } from "../../hooks/useDebouncedValue";
 import { matchesItemSearch } from "../../features/items/itemSearch";
 import {
@@ -89,8 +91,10 @@ const ItemsList = ({
   filter = "all",
   showHeader = true,
   onMetaChange,
+  onClearSearch,
 }) => {
   const { user, profile, isAuthenticated, loading: authLoading } = useAuth();
+  const navigate = useNavigate();
   const [items, setItems] = useState([]);
   const [totalCount, setTotalCount] = useState(0);
   const [cursor, setCursor] = useState(null);
@@ -98,9 +102,15 @@ const ItemsList = ({
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState(null);
+  const [loadMoreError, setLoadMoreError] = useState("");
+  const [operationNotice, setOperationNotice] = useState(null);
   const [editingItem, setEditingItem] = useState(null);
   const [editLoadingId, setEditLoadingId] = useState(null);
+  const [closingId, setClosingId] = useState(null);
   const [deletingId, setDeletingId] = useState(null);
+  const [confirmingDeleteId, setConfirmingDeleteId] = useState(null);
+  const [imageFailures, setImageFailures] = useState({});
+  const [reloadKey, setReloadKey] = useState(0);
   const debouncedSearch = useDebouncedValue(searchQuery, 300);
 
   const campusId = profile?.campus_id || null;
@@ -112,6 +122,7 @@ const ItemsList = ({
 
     const loadFirstPage = async () => {
       if (authLoading) return;
+      onMetaChange?.({ loading: true, error: "" });
 
       if (!isAuthenticated || !campusId) {
         if (!active) return;
@@ -120,12 +131,12 @@ const ItemsList = ({
           setItems(PUBLIC_HOME_ITEMS);
           setTotalCount(PUBLIC_HOME_ITEMS.length);
           setError(null);
-          onMetaChange?.({ total: PUBLIC_HOME_ITEMS.length, loaded: PUBLIC_HOME_ITEMS.length });
+          onMetaChange?.({ total: PUBLIC_HOME_ITEMS.length, loaded: PUBLIC_HOME_ITEMS.length, loading: false, error: "" });
         } else {
           setItems([]);
           setTotalCount(0);
           setError("Please log in with your verified university account to view campus items.");
-          onMetaChange?.({ total: 0, loaded: 0 });
+          onMetaChange?.({ total: 0, loaded: 0, loading: false, error: "Authentication required." });
         }
 
         setLoading(false);
@@ -148,14 +159,14 @@ const ItemsList = ({
         setTotalCount(page.total);
         setCursor(page.cursor);
         setHasMore(page.hasMore);
-        onMetaChange?.({ total: page.total, loaded: page.items.length });
+        onMetaChange?.({ total: page.total, loaded: page.items.length, loading: false, error: "" });
       } catch (loadError) {
         console.error("Campus items load error:", loadError);
         if (active) {
           setItems([]);
           setTotalCount(0);
           setError("Failed to load campus items. Please try again later.");
-          onMetaChange?.({ total: 0, loaded: 0 });
+          onMetaChange?.({ total: 0, loaded: 0, loading: false, error: "Campus reports could not be loaded." });
         }
       } finally {
         if (active) setLoading(false);
@@ -164,7 +175,7 @@ const ItemsList = ({
 
     loadFirstPage();
     return () => { active = false; };
-  }, [authLoading, isAuthenticated, campusId, ownerId, filter, isHomePage, onMetaChange]);
+  }, [authLoading, isAuthenticated, campusId, ownerId, filter, isHomePage, onMetaChange, reloadKey]);
 
   const visibleItems = useMemo(
     () => items.filter((item) => matchesItemSearch(item, debouncedSearch)),
@@ -176,6 +187,7 @@ const ItemsList = ({
 
     try {
       setLoadingMore(true);
+      setLoadMoreError("");
       const page = await listItems({
         campusId,
         type: filter,
@@ -192,7 +204,7 @@ const ItemsList = ({
       setHasMore(page.hasMore);
     } catch (loadError) {
       console.error("Load more items error:", loadError);
-      setError("Could not load more items. Please try again.");
+      setLoadMoreError("The next reports could not be loaded. Your current results are still available.");
     } finally {
       setLoadingMore(false);
     }
@@ -221,17 +233,35 @@ const ItemsList = ({
   };
 
   const handleContactClick = () => {
-    alert("Secure claims and private messaging are being introduced in V2. Personal contact details are hidden.");
+    setOperationNotice({
+      tone: "info",
+      title: "Private claims are protected",
+      message: "Secure claim verification is being introduced in V2. Personal contact details are not exposed from report cards.",
+    });
   };
 
   const handleRemoveItem = async (item) => {
-    if (!item.id || item.owner_id !== user?.id) return;
+    if (!item.id || item.owner_id !== user?.id || closingId) return;
     try {
+      setClosingId(item.id);
+      setOperationNotice(null);
       await closeOwnedItem(item.id);
       setItems((previous) => previous.filter((current) => current.id !== item.id));
       setTotalCount((count) => Math.max(0, count - 1));
-    } catch {
-      alert("Failed to remove item. Please try again.");
+      setOperationNotice({
+        tone: "success",
+        title: "Report closed",
+        message: `"${item.title || "Report"}" is no longer visible in the active campus feed.`,
+      });
+    } catch (closeError) {
+      console.error("Unable to close report:", closeError);
+      setOperationNotice({
+        tone: "error",
+        title: "Report was not closed",
+        message: "Nothing was changed. Check your connection and try again.",
+      });
+    } finally {
+      setClosingId(null);
     }
   };
 
@@ -244,19 +274,24 @@ const ItemsList = ({
       setEditingItem(fullReport);
     } catch (editError) {
       console.error("Unable to load report for editing:", editError);
-      alert("Unable to open this report for editing. Please try again.");
+      setOperationNotice({
+        tone: "error",
+        title: "Could not open this report",
+        message: "The report is unchanged. Retry Edit when your connection is stable.",
+      });
     } finally {
       setEditLoadingId(null);
     }
   };
 
+  const requestDeleteItem = (item) => {
+    if (!item?.id || item.owner_id !== user?.id || deletingId) return;
+    setOperationNotice(null);
+    setConfirmingDeleteId(item.id);
+  };
+
   const handleDeleteItem = async (item) => {
     if (!item?.id || item.owner_id !== user?.id || deletingId) return;
-
-    const confirmed = window.confirm(
-      `Delete "${item.title || "this report"}" permanently? This cannot be undone.`
-    );
-    if (!confirmed) return;
 
     try {
       setDeletingId(item.id);
@@ -267,9 +302,21 @@ const ItemsList = ({
       setItems((previous) => previous.filter((currentItem) => currentItem.id !== item.id));
       setTotalCount((count) => Math.max(0, count - 1));
       if (editingItem?.id === item.id) setEditingItem(null);
+      setConfirmingDeleteId(null);
+      setOperationNotice({
+        tone: result.storageCleanupFailed ? "warning" : "success",
+        title: "Report deleted",
+        message: result.storageCleanupFailed
+          ? "The report is gone from the database. A background storage cleanup may still be needed."
+          : `"${item.title || "Report"}" and its private details were permanently removed.`,
+      });
     } catch (deleteError) {
       console.error("Unable to delete report:", deleteError);
-      alert("Unable to delete this report. Please try again.");
+      setOperationNotice({
+        tone: "error",
+        title: "Report was not deleted",
+        message: "Nothing was removed. Check your connection and try again.",
+      });
     } finally {
       setDeletingId(null);
     }
@@ -324,7 +371,17 @@ const ItemsList = ({
   }
 
   if (error && items.length === 0) {
-    return <div className="items-list-container"><div className="error"><p>{error}</p></div></div>;
+    return (
+      <div className="items-list-container">
+        <StatePanel
+          tone="error"
+          eyebrow="Campus feed"
+          title="We could not load these reports"
+          description={error}
+          action={{ label: "Try again", onClick: () => setReloadKey((value) => value + 1) }}
+        />
+      </div>
+    );
   }
 
   if (isHomePage) {
@@ -370,6 +427,36 @@ const ItemsList = ({
   }
 
   const remaining = Math.max(0, totalCount - items.length);
+  const hasSearch = Boolean(debouncedSearch.trim());
+  const emptyCopy = hasSearch
+    ? {
+        title: `No reports match “${debouncedSearch.trim()}”`,
+        description: "Try a shorter keyword, a category, or a campus location.",
+        action: onClearSearch ? { label: "Clear search", onClick: onClearSearch } : null,
+      }
+    : onlyUserItems
+      ? {
+          title: "You have no active reports",
+          description: "When you lose or find something, your reports will appear here with edit, close and delete controls.",
+          action: { label: "Report an item", onClick: () => navigate("/report", { state: { from: "/dashboard" } }) },
+        }
+      : filter === "lost"
+        ? {
+            title: "No active lost reports",
+            description: "That is good news. If something goes missing, create the first lost report for your campus.",
+            action: { label: "Report lost item", onClick: () => navigate("/report", { state: { kind: "lost", from: "/dashboard" } }) },
+          }
+        : filter === "found"
+          ? {
+              title: "No active found reports",
+              description: "Nothing has been reported found in this campus view yet.",
+              action: { label: "Report found item", onClick: () => navigate("/report", { state: { kind: "found", from: "/dashboard" } }) },
+            }
+          : {
+              title: "The campus feed is quiet",
+              description: "There are no active reports in this campus network yet. You can start the feed with a lost or found report.",
+              action: { label: "Create first report", onClick: () => navigate("/report", { state: { from: "/dashboard" } }) },
+            };
 
   return (
     <div className="items-list-container">
@@ -383,6 +470,17 @@ const ItemsList = ({
         </div>
       )}
 
+      {operationNotice && (
+        <StatePanel
+          compact
+          tone={operationNotice.tone}
+          title={operationNotice.title}
+          description={operationNotice.message}
+          secondaryAction={{ label: "Dismiss", onClick: () => setOperationNotice(null) }}
+          className="items-operation-state"
+        />
+      )}
+
       {showHeader && (
         <div className="items-header">
           <div>
@@ -394,10 +492,13 @@ const ItemsList = ({
       )}
 
       {visibleItems.length === 0 ? (
-        <div className="no-items">
-          <strong>No matching reports</strong>
-          <p>Try another keyword or switch the item filter.</p>
-        </div>
+        <StatePanel
+          tone="empty"
+          eyebrow={onlyUserItems ? "My reports" : "Campus explorer"}
+          title={emptyCopy.title}
+          description={emptyCopy.description}
+          action={emptyCopy.action}
+        />
       ) : (
         <div className="items-grid">
           {visibleItems.map((item) => (
@@ -406,8 +507,13 @@ const ItemsList = ({
               className={`item-card ${item.role === "lost" ? "lost-card" : "found-card"}`}
             >
               <div className="card-media">
-                {item.imageUrl ? (
-                  <img loading="lazy" src={item.imageUrl} alt={item.title || "Reported item"} />
+                {item.imageUrl && !imageFailures[item.id] ? (
+                  <img
+                    loading="lazy"
+                    src={item.imageUrl}
+                    alt={item.title || "Reported item"}
+                    onError={() => setImageFailures((current) => ({ ...current, [item.id]: true }))}
+                  />
                 ) : (
                   <div className="card-image-placeholder" aria-hidden="true">
                     <span>{iconForCategory(item.category)}</span>
@@ -446,9 +552,9 @@ const ItemsList = ({
                     <button
                       className="close-item-btn"
                       onClick={() => handleRemoveItem(item)}
-                      disabled={deletingId === item.id}
+                      disabled={closingId === item.id || deletingId === item.id}
                     >
-                      Close
+                      {closingId === item.id ? "Closing…" : "Close"}
                     </button>
                     <button
                       className="update-item-btn"
@@ -460,8 +566,8 @@ const ItemsList = ({
                     </button>
                     <button
                       className="delete-item-btn"
-                      onClick={() => handleDeleteItem(item)}
-                      disabled={deletingId === item.id}
+                      onClick={() => requestDeleteItem(item)}
+                      disabled={deletingId === item.id || closingId === item.id}
                       aria-label={`Delete ${item.title || "report"} permanently`}
                     >
                       <MdDelete className="button-icon" />
@@ -475,12 +581,47 @@ const ItemsList = ({
                   </button>
                 )}
               </div>
+
+              {onlyUserItems && confirmingDeleteId === item.id && (
+                <div className="item-delete-confirm" role="alert">
+                  <div>
+                    <strong>Delete permanently?</strong>
+                    <span>This removes the report and its private details. It cannot be undone.</span>
+                  </div>
+                  <div className="item-delete-confirm__actions">
+                    <button
+                      type="button"
+                      className="item-delete-confirm__cancel"
+                      onClick={() => setConfirmingDeleteId(null)}
+                      disabled={deletingId === item.id}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      className="item-delete-confirm__confirm"
+                      onClick={() => handleDeleteItem(item)}
+                      disabled={deletingId === item.id}
+                    >
+                      {deletingId === item.id ? "Deleting…" : "Yes, delete"}
+                    </button>
+                  </div>
+                </div>
+              )}
             </article>
           ))}
         </div>
       )}
 
-      {error && items.length > 0 && <div className="error items-inline-error"><p>{error}</p></div>}
+      {loadMoreError && (
+        <StatePanel
+          compact
+          tone="error"
+          title="Could not load the next reports"
+          description={loadMoreError}
+          action={{ label: "Retry", onClick: loadMore }}
+        />
+      )}
 
       {hasMore && (
         <div className="items-pagination">
