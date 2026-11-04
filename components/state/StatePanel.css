@@ -1,0 +1,190 @@
+.state-panel {
+  --state-accent: #08765e;
+  --state-bg: #effaf5;
+  display: flex;
+  align-items: flex-start;
+  gap: 1rem;
+  width: 100%;
+  padding: clamp(1.1rem, 2.5vw, 1.45rem);
+  border: 1px solid color-mix(in srgb, var(--state-accent) 22%, transparent);
+  border-radius: 24px;
+  background: var(--state-bg);
+  color: #17105e;
+}
+
+.state-panel--empty {
+  --state-accent: #17105e;
+  --state-bg: #f5f3eb;
+}
+
+.state-panel--error {
+  --state-accent: #d9422f;
+  --state-bg: #fff0ec;
+}
+
+.state-panel--success {
+  --state-accent: #08765e;
+  --state-bg: #e8f8f2;
+}
+
+.state-panel--warning {
+  --state-accent: #9a6b00;
+  --state-bg: #fff8d7;
+}
+
+.state-panel--info {
+  --state-accent: #3155a5;
+  --state-bg: #eef3ff;
+}
+
+.state-panel__icon {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 14px;
+  background: var(--state-accent);
+  color: #fff;
+  font-size: 1rem;
+  font-weight: 950;
+  box-shadow: 0 4px 0 color-mix(in srgb, var(--state-accent) 25%, transparent);
+}
+
+.state-panel--warning .state-panel__icon {
+  color: #17105e;
+  background: #ffe500;
+}
+
+.state-panel__content {
+  min-width: 0;
+  flex: 1;
+}
+
+.state-panel__eyebrow {
+  margin: 0 0 .2rem;
+  color: var(--state-accent);
+  font-size: .68rem;
+  font-weight: 950;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+}
+
+.state-panel h3 {
+  margin: 0;
+  color: #17105e;
+  font-size: clamp(1rem, 2vw, 1.2rem);
+  line-height: 1.2;
+  letter-spacing: -.02em;
+}
+
+.state-panel__description {
+  margin: .42rem 0 0;
+  max-width: 680px;
+  color: #68647d;
+  font-size: .86rem;
+  line-height: 1.55;
+}
+
+.state-panel__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .55rem;
+  margin-top: .9rem;
+}
+
+.state-panel__action {
+  min-height: 38px;
+  padding: .55rem .85rem;
+  border: 0;
+  border-radius: 12px;
+  background: var(--state-accent);
+  color: #fff;
+  font: inherit;
+  font-size: .78rem;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.state-panel__action--secondary {
+  border: 1px solid rgba(23,16,94,.12);
+  background: #fff;
+  color: #17105e;
+}
+
+.state-panel__action:disabled {
+  opacity: .55;
+  cursor: not-allowed;
+}
+
+.state-panel--compact {
+  gap: .7rem;
+  padding: .85rem 1rem;
+  border-radius: 18px;
+}
+
+.state-panel--compact .state-panel__icon {
+  width: 34px;
+  height: 34px;
+  border-radius: 11px;
+}
+
+.state-panel--compact .state-panel__description {
+  margin-top: .25rem;
+  font-size: .8rem;
+}
+
+.network-state-banner {
+  position: sticky;
+  top: 0;
+  z-index: 80;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: .55rem;
+  min-height: 38px;
+  padding: .45rem 1rem;
+  background: #17105e;
+  color: #fffbd7;
+  font-size: .78rem;
+  font-weight: 850;
+  text-align: center;
+}
+
+.network-state-banner strong {
+  color: #ffe500;
+}
+
+.app-error-state {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 1.2rem;
+  background:
+    radial-gradient(circle at 10% 10%, rgba(255,229,0,.18), transparent 20rem),
+    #f8f7ef;
+}
+
+.app-error-state .state-panel {
+  max-width: 680px;
+}
+
+@media (max-width: 640px) {
+  .state-panel {
+    border-radius: 20px;
+  }
+
+  .state-panel__actions {
+    flex-direction: column;
+  }
+
+  .state-panel__action {
+    width: 100%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .state-panel__action {
+    transition: none !important;
+  }
+}
