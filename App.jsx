@@ -3,6 +3,7 @@ import { useAuth } from "./AuthContext/AuthContext";
 import MinimalLoader from "./componenets/loader/MinimalLoader";
 import AppRouter from "./app/router";
 import AppShell from "./components/layout/AppShell";
+import AppErrorBoundary from "./components/state/AppErrorBoundary";
 
 export default function App() {
   const { loading: authLoading } = useAuth();
@@ -18,8 +19,9 @@ export default function App() {
   }
 
   return (
-    <AppShell>
-      <Suspense
+    <AppErrorBoundary>
+      <AppShell>
+        <Suspense
         fallback={
           <MinimalLoader
             fullScreen
@@ -29,7 +31,8 @@ export default function App() {
         }
       >
         <AppRouter />
-      </Suspense>
-    </AppShell>
+        </Suspense>
+      </AppShell>
+    </AppErrorBoundary>
   );
 }
