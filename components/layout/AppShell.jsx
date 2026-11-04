@@ -1,5 +1,6 @@
 import { lazy, Suspense } from "react";
 import { useLocation } from "react-router-dom";
+import NetworkStatus from "../state/NetworkStatus";
 
 const Navbar = lazy(() => import("../../componenets/navbar/Navbar"));
 const Footer = lazy(() => import("../../componenets/footer/Footer"));
@@ -14,6 +15,7 @@ export default function AppShell({ children }) {
 
   return (
     <div className="app-shell">
+      <NetworkStatus />
       {showChrome && (
         <Suspense fallback={null}>
           <Navbar />
