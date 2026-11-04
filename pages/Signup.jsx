@@ -9,11 +9,14 @@ import { consumeClientCooldown } from "../features/auth/clientCooldown";
 import { normalizeEmail, validateFullName, validatePassword, validateUniversityEmailForSelection } from "../features/auth/authValidation";
 import SEO from "../componenets/seo/SEO";
 import AuthShell from "../components/auth/AuthShell";
+import StatePanel from "../components/state/StatePanel";
 
 export default function Signup() {
   const { isAuthenticated, isEmailVerified } = useAuth();
   const [campuses, setCampuses] = useState([]);
   const [campusLoading, setCampusLoading] = useState(false);
+  const [campusError, setCampusError] = useState("");
+  const [campusRetryKey, setCampusRetryKey] = useState(0);
   const [submitting, setSubmitting] = useState(false);
   const [resending, setResending] = useState(false);
   const [notice, setNotice] = useState(null);
@@ -24,18 +27,28 @@ export default function Signup() {
 
   useEffect(() => {
     let active = true;
-    if (!universityId) { setCampuses([]); return undefined; }
+    if (!universityId) {
+      setCampuses([]);
+      setCampusError("");
+      return undefined;
+    }
     setCampusLoading(true);
+    setCampusError("");
     getCampusesForUniversity(universityId)
       .then((items) => {
         if (!active) return;
         const university = universityLookup[String(universityId)];
         setCampuses(items?.length ? items : university ? [{ id: "main", name: "Main Campus" }] : []);
       })
-      .catch(() => active && setCampuses([]))
+      .catch((error) => {
+        console.error("Campus list load error:", error);
+        if (!active) return;
+        setCampuses([]);
+        setCampusError("We could not load campuses for this university.");
+      })
       .finally(() => active && setCampusLoading(false));
     return () => { active = false; };
-  }, [universityId, universityLookup]);
+  }, [universityId, universityLookup, campusRetryKey]);
 
   if (isAuthenticated && isEmailVerified) return <Navigate to="/dashboard" replace />;
 
@@ -129,6 +142,15 @@ export default function Signup() {
                 {campuses.map((item) => <option key={item.id ?? item.campusId} value={item.id ?? item.campusId}>{item.name}</option>)}
               </select>
               {errors.campus && <span className="auth-error" role="alert">{errors.campus.message}</span>}
+              {campusError && (
+                <StatePanel
+                  compact
+                  tone="error"
+                  title="Campus list unavailable"
+                  description={campusError}
+                  action={{ label: "Retry", onClick: () => setCampusRetryKey((value) => value + 1) }}
+                />
+              )}
             </div>
 
             <div className="auth-field auth-field--full">
