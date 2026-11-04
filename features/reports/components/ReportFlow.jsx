@@ -200,7 +200,7 @@ export default function ReportFlow({ initialData, onCancel, onComplete }) {
           />
         )}
 
-        {error && <div className="report-flow__error" role="alert">{error}</div>
+        {error && <div className="report-flow__error" role="alert">{error}</div>}
 
         <div className="report-flow__step-body" key={step}>
           <Step draft={draft} updateField={updateField} />
