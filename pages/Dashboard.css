@@ -599,3 +599,35 @@
 .dashboard-explorer {
   scroll-margin-top: 96px;
 }
+
+
+.dashboard-snapshot .state-panel {
+  margin-top: .85rem;
+  border-color: rgba(255,255,255,.18);
+  background: rgba(255,255,255,.1);
+}
+
+.dashboard-snapshot .state-panel__icon {
+  background: #ffe500;
+  color: #17105e;
+  box-shadow: none;
+}
+
+.dashboard-snapshot .state-panel h3,
+.dashboard-snapshot .state-panel__description {
+  color: #fff;
+}
+
+.dashboard-snapshot .state-panel__description {
+  opacity: .76;
+}
+
+.dashboard-snapshot .state-panel__action {
+  background: #ffe500;
+  color: #17105e;
+}
+
+.dashboard-snapshot .state-panel__action--secondary {
+  background: rgba(255,255,255,.12);
+  color: #fff;
+}
