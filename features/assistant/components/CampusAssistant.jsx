@@ -175,8 +175,7 @@ export default function CampusAssistant() {
           <div className="campus-assistant__privacy">
             <FiShield aria-hidden="true" />
             <p>
-              <strong>Privacy first.</strong> AI receives only public report fields.
-              Don’t share passwords, OTPs, phone numbers or secret ownership evidence.
+              <strong>Privacy first.</strong> AI receives only public report fields. Your question is processed by an external AI provider, so don’t share passwords, OTPs, phone numbers or secret ownership evidence.
             </p>
           </div>
 
