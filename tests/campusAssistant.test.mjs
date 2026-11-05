@@ -5,6 +5,7 @@ import handler from "../api/chat.js";
 import { selectRelevantReports, redactText } from "../features/assistant/reportContext.js";
 import { collectAssistantReply, readServerEvents } from "../features/assistant/streamEvents.js";
 import { getGeminiConfig, readGeminiReply } from "../features/assistant/server/gemini.js";
+import { requestAssistantReply } from "../features/assistant/services/assistantTransport.js";
 
 const originalFetch = globalThis.fetch;
 const originalConsoleError = console.error;
@@ -212,4 +213,38 @@ test("client disconnect cancels the upstream request", async () => {
   await handler(request(), res);
   assert.equal(aborted, true);
   assert.equal(res.text, "");
+});
+
+test("Safari Load failed becomes an actionable connection error without duplicate AI calls", async () => {
+  let calls = 0;
+  globalThis.fetch = async () => { calls++; throw new TypeError("Load failed"); };
+  await assert.rejects(requestAssistantReply({ token: "test", message: "Help" }), (error) => error.code === "assistant/connection" && error.message.includes("Reload"));
+  assert.equal(calls, 1);
+});
+
+test("expired preview/login HTML is distinguished from an AI reply", async () => {
+  globalThis.fetch = async () => new Response("<html>Sign in</html>", { headers: { "Content-Type": "text/html" } });
+  await assert.rejects(requestAssistantReply({ token: "test", message: "Help" }), { code: "assistant/preview-access" });
+});
+
+test("client transport preserves quota guidance and user cancellation", async () => {
+  globalThis.fetch = async () => Response.json({ error: "Quota exhausted", code: "assistant/quota", retryAfter: 30 }, { status: 429 });
+  await assert.rejects(requestAssistantReply({ token: "test", message: "Help" }), { code: "assistant/quota", retryAfter: 30, status: 429 });
+  globalThis.fetch = async () => { throw new DOMException("Stopped", "AbortError"); };
+  await assert.rejects(requestAssistantReply({ token: "test", message: "Help" }), { name: "AbortError" });
+});
+
+test("stream headers reach the browser before the first model text", async () => {
+  const res = response();
+  let headersReadyAtRead = false;
+  fixture.provider = () => new Response(new ReadableStream({
+    pull(controller) {
+      headersReadyAtRead = res.headersSent;
+      controller.enqueue(new TextEncoder().encode('data: {"candidates":[{"content":{"parts":[{"text":"Ready."}]},"finishReason":"STOP"}]}\n\n'));
+      controller.close();
+    },
+  }, { highWaterMark: 0 }));
+  await handler(request(), res);
+  assert.equal(headersReadyAtRead, true);
+  assert.equal(await collectAssistantReply(stream(res.text)), "Ready.");
 });

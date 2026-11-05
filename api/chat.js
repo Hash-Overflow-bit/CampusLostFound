@@ -198,13 +198,14 @@ function sendEvent(response, event, data) {
 }
 
 export default async function handler(request, response) {
-  response.setHeader("Cache-Control", "no-store");
+  response.setHeader("Cache-Control", "no-store, no-transform");
   if (request.method !== "POST") {
     response.setHeader("Allow", "POST");
     return response.status(405).json({ error: "Method not allowed." });
   }
 
   const controller = new AbortController();
+  let heartbeat;
   let timedOut = false;
   const timeout = setTimeout(() => { timedOut = true; controller.abort(); }, 25_000);
   const disconnect = () => { if (!response.writableEnded) controller.abort(); };
@@ -236,6 +237,12 @@ export default async function handler(request, response) {
       ...config, systemPrompt: buildSystemPrompt(campusName, reports),
       history, message, signal: controller.signal,
     });
+    // Flush as soon as Google accepts the request, including while it is still
+    // reasoning. Keep intermediaries from treating a quiet stream as a dead one.
+    sendEvent(response, "ready", {});
+    heartbeat = setInterval(() => {
+      if (!response.writableEnded && !response.destroyed) response.write(": keepalive\n\n");
+    }, 8_000);
     for await (const event of readGeminiReply(result.body, controller.signal)) {
       if (event.type === "delta") sendEvent(response, "delta", { text: event.text });
       else sendEvent(response, "done", { model, truncated: event.truncated });
@@ -258,6 +265,7 @@ export default async function handler(request, response) {
     sendEvent(response, "error", payload);
     if (!response.writableEnded && !response.destroyed) response.end();
   } finally {
+    clearInterval(heartbeat);
     clearTimeout(timeout);
     response.off("close", disconnect);
   }

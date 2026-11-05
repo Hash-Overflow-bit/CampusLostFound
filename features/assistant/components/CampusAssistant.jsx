@@ -1,12 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import {
-  FiMessageCircle,
   FiSend,
   FiShield,
   FiSquare,
   FiX,
-  FiZap,
 } from "react-icons/fi";
 import { useAuth } from "../../../AuthContext/AuthContext";
 import StatePanel from "../../../components/state/StatePanel";
@@ -224,7 +222,7 @@ function CampusAssistantChat({ campusName }) {
           <header className="campus-assistant__header">
             <div className="campus-assistant__identity">
               <span className="campus-assistant__mark" aria-hidden="true">
-                <FiZap />
+                <span className="campus-assistant__glyph" />
               </span>
               <div>
                 <p>AI campus helper</p>
@@ -393,13 +391,11 @@ function CampusAssistantChat({ campusName }) {
         onClick={() => setOpen((value) => !value)}
         aria-expanded={open}
         aria-controls="campus-assistant-panel"
+        aria-label={open ? "Close Campus Assistant" : "Open Campus Assistant"}
+        title={open ? "Close Campus Assistant" : "Ask Campus AI"}
       >
-        <span className="campus-assistant__launcher-icon">
-          {open ? <FiX /> : <FiMessageCircle />}
-        </span>
-        <span className="campus-assistant__launcher-copy">
-          <small>AI</small>
-          <strong>Ask Campus AI</strong>
+        <span className="campus-assistant__launcher-icon" aria-hidden="true">
+          {open ? <FiX /> : <span className="campus-assistant__glyph" />}
         </span>
       </button>
     </div>
