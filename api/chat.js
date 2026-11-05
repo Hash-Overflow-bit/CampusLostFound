@@ -1,7 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
 
 const AI_GATEWAY_URL = "https://ai-gateway.vercel.sh/v1/chat/completions";
-const DEFAULT_MODEL = "alibaba/qwen3.5-flash";
+const DEFAULT_MODEL = "google/gemini-3.8-flash";
 const MAX_MESSAGE_LENGTH = 700;
 const MAX_HISTORY_MESSAGES = 6;
 const MAX_REPORTS = 8;
@@ -422,8 +422,8 @@ export default async function handler(request, response) {
           ...history,
           { role: "user", content: message },
         ],
-        temperature: 0.25,
-        max_tokens: 420,
+        reasoning: { effort: "low" },
+        max_tokens: 1024,
       }),
     });
 
