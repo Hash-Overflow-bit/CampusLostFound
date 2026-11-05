@@ -82,7 +82,7 @@ export default function CampusAssistant() {
 
   if (!enabled) return null;
 
-  const send = async (rawText) => {
+  const send = async (rawText, { appendUser = true } = {}) => {
     const text = String(rawText || "").trim().slice(0, 700);
     if (!text || busy) return;
 
@@ -92,9 +92,15 @@ export default function CampusAssistant() {
     }
 
     const userMessage = createMessage("user", text);
-    const priorHistory = messages.filter((message) => message.id !== "welcome");
+    const conversation = messages.filter((message) => message.id !== "welcome");
+    const priorHistory =
+      appendUser || conversation.at(-1)?.role !== "user"
+        ? conversation
+        : conversation.slice(0, -1);
 
-    setMessages((current) => [...current, userMessage]);
+    if (appendUser) {
+      setMessages((current) => [...current, userMessage]);
+    }
     setInput("");
     setError("");
     setStatus("thinking");
@@ -226,7 +232,7 @@ export default function CampusAssistant() {
                   online && messages.at(-1)?.role === "user"
                     ? {
                         label: "Retry",
-                        onClick: () => send(messages.at(-1).content),
+                        onClick: () => send(messages.at(-1).content, { appendUser: false }),
                         disabled: busy,
                       }
                     : null
