@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { Link } from "react-router-dom";
 import {
   FiMessageCircle,
   FiSend,
@@ -36,15 +37,28 @@ export default function CampusAssistant() {
     isAuthenticated,
     isEmailVerified,
     hasTrustedCampus,
+    user,
     profile,
     campus,
   } = useAuth();
 
+  if (!isAuthenticated || !isEmailVerified || !hasTrustedCampus) return null;
+  return (
+    <CampusAssistantChat
+      key={`${user.id}:${profile.campus_id}`}
+      campusName={campus?.name || profile?.campuses?.name || "your campus"}
+    />
+  );
+}
+
+function CampusAssistantChat({ campusName }) {
   const [open, setOpen] = useState(false);
   const [messages, setMessages] = useState([WELCOME_MESSAGE]);
   const [input, setInput] = useState("");
   const [status, setStatus] = useState("idle");
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+  const [cooldown, setCooldown] = useState(0);
   const [online, setOnline] = useState(() =>
     typeof navigator === "undefined" ? true : navigator.onLine
   );
@@ -52,8 +66,6 @@ export default function CampusAssistant() {
   const inputRef = useRef(null);
   const abortRef = useRef(null);
 
-  const enabled = isAuthenticated && isEmailVerified && hasTrustedCampus;
-  const campusName = campus?.name || profile?.campuses?.name || "your campus";
   const busy = status === "thinking" || status === "streaming";
 
   const lastUserMessage = useMemo(
@@ -90,7 +102,11 @@ export default function CampusAssistant() {
 
   useEffect(() => () => abortRef.current?.abort(), []);
 
-  if (!enabled) return null;
+  useEffect(() => {
+    if (!cooldown) return;
+    const timer = setTimeout(() => setCooldown((seconds) => Math.max(0, seconds - 1)), 1000);
+    return () => clearTimeout(timer);
+  }, [cooldown]);
 
   const stop = () => {
     abortRef.current?.abort();
@@ -98,7 +114,7 @@ export default function CampusAssistant() {
 
   const send = async (rawText, { appendUser = true } = {}) => {
     const text = String(rawText || "").trim().slice(0, 700);
-    if (!text || busy) return;
+    if (!text || busy || abortRef.current || cooldown) return;
 
     if (!online) {
       setError("You’re offline. Reconnect before asking Campus Assistant.");
@@ -125,6 +141,7 @@ export default function CampusAssistant() {
 
     setInput("");
     setError("");
+    setNotice("");
     setStatus("thinking");
 
     const assistantId = `assistant-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
@@ -136,9 +153,9 @@ export default function CampusAssistant() {
       await askCampusAssistant({
         message: text,
         history: priorHistory,
-        campusName,
         signal: controller.signal,
         onToken: (_chunk, fullText) => {
+          if (controller.signal.aborted) return;
           receivedText = true;
           setStatus("streaming");
           setMessages((current) => {
@@ -154,16 +171,22 @@ export default function CampusAssistant() {
             return [...current, createMessage("assistant", fullText, assistantId)];
           });
         },
+        onComplete: ({ truncated }) => {
+          if (!controller.signal.aborted && truncated) {
+            setNotice("Reply reached its length limit. Ask a follow-up to continue.");
+          }
+        },
       });
     } catch (assistantError) {
       if (assistantError?.name === "AbortError") {
+        setNotice("Reply stopped.");
         if (!receivedText) {
           setError("Response stopped before any answer was received.");
         }
         return;
       }
 
-      console.error("Campus Assistant error:", assistantError);
+      setCooldown(Math.min(3600, Math.max(0, Math.ceil(Number(assistantError.retryAfter) || 0))));
       setError(
         assistantError?.message ||
           (receivedText
@@ -184,6 +207,7 @@ export default function CampusAssistant() {
   const clearConversation = () => {
     setMessages([WELCOME_MESSAGE]);
     setError("");
+    setNotice("");
     setInput("");
   };
 
@@ -191,6 +215,7 @@ export default function CampusAssistant() {
     <div className="campus-assistant">
       {open && (
         <section
+          id="campus-assistant-panel"
           className="campus-assistant__panel"
           role="dialog"
           aria-modal="false"
@@ -218,14 +243,14 @@ export default function CampusAssistant() {
             </button>
           </header>
 
-          <div className="campus-assistant__privacy">
+          <div className="campus-assistant__privacy" id="campus-assistant-privacy">
             <FiShield aria-hidden="true" />
             <p>
-              <strong>Privacy first.</strong> AI can use only matching active public report fields from your verified campus. Don’t share passwords, OTPs, phone numbers or secret ownership evidence.
+              <strong>Keep details private.</strong> Google processes your messages and matching public campus reports. Free-tier data may help improve its products. Don’t share passwords, contact details or ownership evidence.
             </p>
           </div>
 
-          <div className="campus-assistant__messages" ref={scrollRef}>
+          <div className="campus-assistant__messages" ref={scrollRef} role="log" aria-label="Campus Assistant conversation" aria-live={busy ? "off" : "polite"} aria-busy={busy}>
             {messages.map((message, index) => {
               const streaming =
                 status === "streaming" &&
@@ -242,6 +267,7 @@ export default function CampusAssistant() {
                   )}
                   <div
                     className={`campus-assistant__bubble${streaming ? " is-streaming" : ""}`}
+                    dir="auto"
                   >
                     {message.content}
                   </div>
@@ -275,7 +301,7 @@ export default function CampusAssistant() {
                   <span />
                   <span />
                   <span />
-                  <small>Checking relevant campus reports</small>
+                  <small>Checking recent campus reports</small>
                 </div>
               </div>
             )}
@@ -289,10 +315,10 @@ export default function CampusAssistant() {
                 action={
                   online && lastUserMessage
                     ? {
-                        label: "Retry",
+                        label: cooldown ? `Retry in ${cooldown}s` : "Retry",
                         onClick: () =>
                           send(lastUserMessage.content, { appendUser: false }),
-                        disabled: busy,
+                        disabled: busy || cooldown > 0,
                       }
                     : null
                 }
@@ -302,6 +328,7 @@ export default function CampusAssistant() {
                 }}
               />
             )}
+            {notice && <p className="campus-assistant__notice" role="status">{notice}</p>}
           </div>
 
           <form className="campus-assistant__composer" onSubmit={submit}>
@@ -311,10 +338,12 @@ export default function CampusAssistant() {
             <textarea
               ref={inputRef}
               id="campus-assistant-input"
+              dir="auto"
+              aria-describedby="campus-assistant-privacy"
               value={input}
               onChange={(event) => setInput(event.target.value.slice(0, 700))}
               onKeyDown={(event) => {
-                if (event.key === "Enter" && !event.shiftKey) {
+                if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
                   event.preventDefault();
                   if (input.trim() && !busy) send(input);
                 }
@@ -332,7 +361,7 @@ export default function CampusAssistant() {
               type={busy ? "button" : "submit"}
               className={`campus-assistant__send${busy ? " is-stop" : ""}`}
               onClick={busy ? stop : undefined}
-              disabled={!busy && (!input.trim() || !online)}
+              disabled={!busy && (!input.trim() || !online || cooldown > 0)}
               aria-label={busy ? "Stop reply" : "Send message"}
             >
               {busy ? <FiSquare /> : <FiSend />}
@@ -340,6 +369,10 @@ export default function CampusAssistant() {
           </form>
 
           <footer className="campus-assistant__footer">
+            <nav className="campus-assistant__links" aria-label="Lost and found actions">
+              <Link to="/report" onClick={() => setOpen(false)}>Report an item</Link>
+              <a href="/#browse-reports" onClick={() => setOpen(false)}>Browse reports</a>
+            </nav>
             <span>
               {status === "streaming"
                 ? "Replying live · AI can make mistakes"
@@ -359,7 +392,7 @@ export default function CampusAssistant() {
         className={`campus-assistant__launcher${open ? " is-open" : ""}`}
         onClick={() => setOpen((value) => !value)}
         aria-expanded={open}
-        aria-controls="campus-assistant-title"
+        aria-controls="campus-assistant-panel"
       >
         <span className="campus-assistant__launcher-icon">
           {open ? <FiX /> : <FiMessageCircle />}

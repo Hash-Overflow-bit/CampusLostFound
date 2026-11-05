@@ -1,12 +1,13 @@
 import { getSupabaseSession } from "../../auth/supabaseAuthAdapter";
+import { collectAssistantReply } from "../streamEvents.js";
 
 const MAX_HISTORY = 6;
 
 export async function askCampusAssistant({
   message,
   history = [],
-  campusName = "",
   onToken,
+  onComplete,
   signal,
 }) {
   const session = await getSupabaseSession();
@@ -27,7 +28,6 @@ export async function askCampusAssistant({
     },
     body: JSON.stringify({
       message,
-      campusName,
       history: history.slice(-MAX_HISTORY).map((entry) => ({
         role: entry.role,
         content: entry.content,
@@ -39,36 +39,13 @@ export async function askCampusAssistant({
     const payload = await response.json().catch(() => ({}));
     const error = new Error(payload.error || "Campus Assistant is unavailable.");
     error.status = response.status;
+    error.code = payload.code;
+    error.retryAfter = payload.retryAfter || Number(response.headers.get("Retry-After")) || 0;
     throw error;
   }
 
-  if (!response.body) {
-    throw new Error("Campus Assistant did not return a live response.");
+  if (!response.headers.get("Content-Type")?.includes("text/event-stream")) {
+    throw new Error("Campus Assistant is not available on this server. Please try the deployed app.");
   }
-
-  const reader = response.body.getReader();
-  const decoder = new TextDecoder();
-  let fullText = "";
-
-  while (true) {
-    const { value, done } = await reader.read();
-    if (done) break;
-
-    const chunk = decoder.decode(value, { stream: true });
-    if (!chunk) continue;
-
-    fullText += chunk;
-    onToken?.(chunk, fullText);
-  }
-
-  const tail = decoder.decode();
-  if (tail) {
-    fullText += tail;
-    onToken?.(tail, fullText);
-  }
-
-  const reply = fullText.trim();
-  if (!reply) throw new Error("Campus Assistant returned an empty response.");
-
-  return reply;
+  return collectAssistantReply(response.body, { signal, onToken, onComplete });
 }

@@ -299,6 +299,38 @@
   margin: .7rem 0;
 }
 
+.campus-assistant__notice {
+  margin: .7rem 0;
+  color: #5e5875;
+  font-size: .75rem;
+}
+
+.campus-assistant__links {
+  display: flex;
+  flex-basis: 100%;
+  gap: 1rem;
+}
+
+.campus-assistant__links a {
+  color: var(--assistant-green-dark);
+  font-size: .72rem;
+  font-weight: 800;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.campus-assistant__footer {
+  flex-wrap: wrap;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .campus-assistant *, .campus-assistant *::after {
+    animation: none !important;
+    transition: none !important;
+    scroll-behavior: auto !important;
+  }
+}
+
 .campus-assistant__composer {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;

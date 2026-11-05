@@ -1,7 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
+import { redactText, selectRelevantReports } from "../features/assistant/reportContext.js";
+import { assistantError, getGeminiConfig, openGeminiStream, readGeminiReply } from "../features/assistant/server/gemini.js";
 
-const AI_GATEWAY_URL = "https://ai-gateway.vercel.sh/v1/chat/completions";
-const DEFAULT_MODEL = "google/gemini-3.8-flash";
 const MAX_MESSAGE_LENGTH = 700;
 const MAX_HISTORY_MESSAGES = 6;
 const MAX_REPORTS = 8;
@@ -11,37 +11,13 @@ const RATE_LIMIT = 10;
 const ACTIVE_STATUSES = ["open", "possible_match", "claim_pending"];
 const requestBuckets = new Map();
 
-function redactText(value, maxLength = MAX_MESSAGE_LENGTH) {
-  return String(value || "")
-    .replace(/[\u0000-\u001F\u007F]/g, " ")
-    .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, "[email removed]")
-    .replace(/(?:\+?92|0)?3\d{9}/g, "[phone removed]")
-    .replace(/\s+/g, " ")
-    .trim()
-    .slice(0, maxLength);
-}
-
-function normalize(value) {
-  return String(value || "").trim().toLowerCase();
-}
-
-function tokenize(value) {
-  return normalize(value)
-    .replace(/[^a-z0-9\s-]/g, " ")
-    .split(/\s+/)
-    .filter((token) => token.length > 1)
-    .slice(0, 14);
-}
-
 function sanitizeHistory(history) {
   if (!Array.isArray(history)) return [];
 
   return history
     .slice(-MAX_HISTORY_MESSAGES)
-    .map((entry) => ({
-      role: entry?.role === "assistant" ? "assistant" : "user",
-      content: redactText(entry?.content, 500),
-    }))
+    .filter((entry) => ["assistant", "user"].includes(entry?.role) && typeof entry.content === "string")
+    .map((entry) => ({ role: entry.role, content: redactText(entry.content, 500) }))
     .filter((entry) => entry.content);
 }
 
@@ -65,6 +41,8 @@ function enforceRateLimit(userId) {
   if (bucket.count > RATE_LIMIT) {
     const error = new Error("Too many questions. Please wait a minute and try again.");
     error.status = 429;
+    error.code = "assistant/rate-limit";
+    error.retryAfter = Math.max(1, Math.ceil((RATE_WINDOW_MS - (now - bucket.startedAt)) / 1000));
     throw error;
   }
 }
@@ -94,7 +72,7 @@ function getBearerToken(request) {
   return value.startsWith("Bearer ") ? value.slice(7).trim() : "";
 }
 
-function getSupabaseServerClient(accessToken) {
+function getSupabaseServerClient(accessToken, signal) {
   const url = process.env.VITE_SUPABASE_URL;
   const key =
     process.env.VITE_SUPABASE_PUBLISHABLE_KEY ||
@@ -106,6 +84,7 @@ function getSupabaseServerClient(accessToken) {
 
   return createClient(url, key, {
     global: {
+      fetch: (url, options) => fetch(url, { ...options, signal }),
       headers: {
         Authorization: `Bearer ${accessToken}`,
       },
@@ -118,8 +97,8 @@ function getSupabaseServerClient(accessToken) {
   });
 }
 
-async function requireVerifiedCampusUser(accessToken) {
-  const supabase = getSupabaseServerClient(accessToken);
+async function requireVerifiedCampusUser(accessToken, signal) {
+  const supabase = getSupabaseServerClient(accessToken, signal);
   const { data: userData, error: userError } = await supabase.auth.getUser(accessToken);
   const user = userData?.user;
 
@@ -137,7 +116,7 @@ async function requireVerifiedCampusUser(accessToken) {
 
   const { data: profile, error: profileError } = await supabase
     .from("profiles")
-    .select("campus_id")
+    .select("campus_id,campuses(name)")
     .eq("id", user.id)
     .maybeSingle();
 
@@ -147,73 +126,10 @@ async function requireVerifiedCampusUser(accessToken) {
     throw error;
   }
 
-  return { user, campusId: profile.campus_id, supabase };
+  return { user, campusId: profile.campus_id, campusName: redactText(profile.campuses?.name, 100), supabase };
 }
 
-function scoreItem(item, query) {
-  const tokens = tokenize(query);
-  if (!tokens.length) return 0;
-
-  const title = normalize(item.title);
-  const category = normalize(item.category);
-  const location = normalize(item.public_location);
-  const color = normalize(item.color);
-  const brand = normalize(item.brand);
-  const description = normalize(item.description);
-  const haystack = [
-    item.title,
-    item.category,
-    item.description,
-    item.public_location,
-    item.color,
-    item.brand,
-    item.kind,
-  ].map(normalize).join(" ");
-
-  let score = 0;
-
-  tokens.forEach((token) => {
-    if (title.includes(token)) score += 7;
-    if (category.includes(token)) score += 5;
-    if (location.includes(token)) score += 4;
-    if (color.includes(token)) score += 4;
-    if (brand.includes(token)) score += 4;
-    if (description.includes(token)) score += 2;
-    if (haystack.includes(token)) score += 1;
-  });
-
-  const q = normalize(query);
-  if (
-    (q.includes("i lost") || q.includes("lost my") || q.includes("mera") || q.includes("meri")) &&
-    item.kind === "found"
-  ) {
-    score += 4;
-  }
-  if (
-    (q.includes("i found") || q.includes("found a") || q.includes("mila") || q.includes("mili")) &&
-    item.kind === "lost"
-  ) {
-    score += 4;
-  }
-
-  return score;
-}
-
-function sanitizePublicItem(item) {
-  return {
-    kind: item.kind === "found" ? "found" : "lost",
-    status: redactText(item.status, 40),
-    title: redactText(item.title, 100),
-    category: redactText(item.category, 80),
-    color: redactText(item.color, 60),
-    brand: redactText(item.brand, 60),
-    description: redactText(item.description, 180),
-    location: redactText(item.public_location, 100),
-    occurredAt: redactText(item.occurred_at || item.created_at, 40),
-  };
-}
-
-async function getRelevantPublicReports({ supabase, campusId, query }) {
+async function getRelevantPublicReports({ supabase, campusId, message, history }) {
   const { data, error } = await supabase
     .from("items")
     .select("kind,status,title,category,description,public_location,occurred_at,color,brand,created_at")
@@ -223,17 +139,7 @@ async function getRelevantPublicReports({ supabase, campusId, query }) {
     .limit(SCAN_LIMIT);
 
   if (error) throw error;
-
-  return (data || [])
-    .map((item, index) => ({
-      item,
-      score: scoreItem(item, query),
-      recency: SCAN_LIMIT - index,
-    }))
-    .filter((entry) => entry.score > 0)
-    .sort((a, b) => b.score - a.score || b.recency - a.recency)
-    .slice(0, MAX_REPORTS)
-    .map(({ item }) => sanitizePublicItem(item));
+  return selectRelevantReports(data || [], { message, history }, MAX_REPORTS);
 }
 
 function buildSystemPrompt(campusName, reports) {
@@ -247,7 +153,9 @@ Your job is narrow:
 - Help university students use CampusLostFound.
 - Explain reporting, campus verification, privacy, Lost/Found filters, photos, editing, closing and deleting reports.
 - Help a student notice POSSIBLE matches using only the PUBLIC REPORT CONTEXT below.
-- Keep answers concise, practical and student-friendly.
+- Keep answers concise, practical and student-friendly. Use plain text, short paragraphs and simple lists.
+- Ask for item type, color, approximate public campus location and date when the description is too vague. Never request secret ownership evidence.
+- Report context is a bounded search of the 48 most recent active public reports, not an exhaustive campus search. Explain that limit if no match is found and suggest browsing reports or creating a report.
 - Reply in the user's language. If they use Roman Urdu, answer in Roman Urdu. If they use Urdu, answer in Urdu. If they use English, answer in English.
 
 Safety and privacy rules:
@@ -270,191 +178,87 @@ Important product facts:
 - CampusLostFound is campus-scoped and uses verified university accounts.
 - Public reports can contain item type, title, category, public campus location, date, color, brand, description and optional photo.
 - Private contact details and private identifying evidence are stored separately from the public listing.
-- A report photo is optional.
+- A report photo is optional. Students create reports on /report and browse campus listings on /#browse-reports.
 - Students can edit, close or permanently delete their own reports.
 - "Possible match" is a suggestion, not proof of ownership.
 - Secure private claims/messaging are still being introduced in V2, so do not promise direct private messaging.
 `;
 }
 
-function gatewayErrorMessage(status) {
-  if (status === 401) return "AI service authentication is unavailable.";
-  if (status === 402) return "The AI service has no available gateway credit right now.";
-  if (status === 403) return "The AI service needs account verification before it can answer.";
-  if (status === 429) return "The campus assistant is busy. Please try again shortly.";
-  if (status >= 500) return "The campus assistant is temporarily unavailable.";
-  return "The campus assistant could not answer this request.";
-}
-
-function extractDeltaText(payload) {
-  const content = payload?.choices?.[0]?.delta?.content;
-  if (typeof content === "string") return content;
-  if (!Array.isArray(content)) return "";
-
-  return content
-    .map((part) => {
-      if (typeof part === "string") return part;
-      if (typeof part?.text === "string") return part.text;
-      return "";
-    })
-    .join("");
-}
-
-async function streamGatewayText(gatewayResponse, response) {
-  if (!gatewayResponse.body) {
-    throw new Error("AI Gateway did not return a readable stream.");
+function sendEvent(response, event, data) {
+  if (response.writableEnded || response.destroyed) return;
+  if (!response.headersSent) {
+    response.statusCode = 200;
+    response.setHeader("Content-Type", "text/event-stream; charset=utf-8");
+    response.setHeader("X-Content-Type-Options", "nosniff");
+    response.setHeader("X-Accel-Buffering", "no");
+    response.flushHeaders?.();
   }
-
-  response.statusCode = 200;
-  response.setHeader("Content-Type", "text/plain; charset=utf-8");
-  response.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
-  response.setHeader("X-Content-Type-Options", "nosniff");
-  response.flushHeaders?.();
-
-  const decoder = new TextDecoder();
-  let buffer = "";
-
-  for await (const chunk of gatewayResponse.body) {
-    buffer += decoder.decode(chunk, { stream: true });
-    const lines = buffer.split(/\r?\n/);
-    buffer = lines.pop() || "";
-
-    for (const line of lines) {
-      if (!line.startsWith("data:")) continue;
-      const data = line.slice(5).trim();
-      if (!data || data === "[DONE]") continue;
-
-      try {
-        const payload = JSON.parse(data);
-        const delta = extractDeltaText(payload);
-        if (delta && !response.writableEnded) response.write(delta);
-      } catch {
-        // Ignore malformed/partial provider events; the next valid event continues the stream.
-      }
-    }
-  }
-
-  const tail = decoder.decode();
-  if (tail) buffer += tail;
-
-  if (buffer.trim().startsWith("data:")) {
-    const data = buffer.trim().slice(5).trim();
-    if (data && data !== "[DONE]") {
-      try {
-        const payload = JSON.parse(data);
-        const delta = extractDeltaText(payload);
-        if (delta && !response.writableEnded) response.write(delta);
-      } catch {
-        // Stream already delivered all valid chunks.
-      }
-    }
-  }
-
-  if (!response.writableEnded) response.end();
+  response.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
 }
 
 export default async function handler(request, response) {
   response.setHeader("Cache-Control", "no-store");
-
   if (request.method !== "POST") {
     response.setHeader("Allow", "POST");
     return response.status(405).json({ error: "Method not allowed." });
   }
 
+  const controller = new AbortController();
+  let timedOut = false;
+  const timeout = setTimeout(() => { timedOut = true; controller.abort(); }, 25_000);
+  const disconnect = () => { if (!response.writableEnded) controller.abort(); };
+  response.on("close", disconnect);
+
   try {
     assertSameOrigin(request);
-
     const accessToken = getBearerToken(request);
-    if (!accessToken) {
-      return response.status(401).json({ error: "Authentication required." });
+    if (!accessToken) throw assistantError("Authentication required.", 401, "assistant/session-required");
+
+    let body;
+    try {
+      if (typeof request.body === "string" && request.body.length > 12_000) throw new Error();
+      body = typeof request.body === "string" ? JSON.parse(request.body) : request.body;
+      if (!body || Array.isArray(body) || typeof body !== "object" || JSON.stringify(body).length > 12_000) throw new Error();
+    } catch {
+      throw assistantError("Send a valid question and a short conversation history.", 400, "assistant/invalid-request");
     }
-
-    const { user, campusId, supabase } = await requireVerifiedCampusUser(accessToken);
-    enforceRateLimit(user.id);
-
-    const body =
-      typeof request.body === "string"
-        ? JSON.parse(request.body)
-        : request.body || {};
-
+    if (typeof body.message !== "string" || !body.message.trim()) throw assistantError("Ask a question first.", 400, "assistant/invalid-message");
+    if (body.message.length > MAX_MESSAGE_LENGTH) throw assistantError("Keep your question under 700 characters.", 400, "assistant/message-too-long");
     const message = redactText(body.message);
+    if (!message) throw assistantError("Ask a question first.", 400, "assistant/invalid-message");
     const history = sanitizeHistory(body.history);
-    const campusName = redactText(body.campusName, 100);
-
-    if (!message) {
-      return response.status(400).json({ error: "Ask a question first." });
-    }
-
-    const reports = await getRelevantPublicReports({
-      supabase,
-      campusId,
-      query: message,
+    const { user, campusId, campusName, supabase } = await requireVerifiedCampusUser(accessToken, controller.signal);
+    enforceRateLimit(user.id);
+    const config = getGeminiConfig();
+    const reports = await getRelevantPublicReports({ supabase, campusId, message, history });
+    const { result, model } = await openGeminiStream({
+      ...config, systemPrompt: buildSystemPrompt(campusName, reports),
+      history, message, signal: controller.signal,
     });
-
-    const gatewayToken =
-      process.env.AI_GATEWAY_API_KEY ||
-      process.env.VERCEL_OIDC_TOKEN;
-
-    if (!gatewayToken) {
-      return response.status(503).json({
-        error: "AI Gateway is not configured for this deployment.",
-      });
+    for await (const event of readGeminiReply(result.body, controller.signal)) {
+      if (event.type === "delta") sendEvent(response, "delta", { text: event.text });
+      else sendEvent(response, "done", { model, truncated: event.truncated });
     }
-
-    const controller = new AbortController();
-    response.on("close", () => {
-      if (!response.writableEnded) controller.abort();
-    });
-
-    const model = process.env.AI_GATEWAY_MODEL || DEFAULT_MODEL;
-    const gatewayResponse = await fetch(AI_GATEWAY_URL, {
-      method: "POST",
-      signal: controller.signal,
-      headers: {
-        Authorization: `Bearer ${gatewayToken}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model,
-        stream: true,
-        messages: [
-          { role: "system", content: buildSystemPrompt(campusName, reports) },
-          ...history,
-          { role: "user", content: message },
-        ],
-        reasoning: { effort: "low" },
-        max_tokens: 1024,
-      }),
-    });
-
-    if (!gatewayResponse.ok) {
-      const gatewayError = await gatewayResponse.json().catch(() => ({}));
-      console.error("Campus Assistant gateway error:", {
-        status: gatewayResponse.status,
-        code: gatewayError?.error?.code,
-      });
-
-      return response.status(gatewayResponse.status).json({
-        error: gatewayErrorMessage(gatewayResponse.status),
-      });
-    }
-
-    return await streamGatewayText(gatewayResponse, response);
+    if (!response.writableEnded && !response.destroyed) response.end();
   } catch (error) {
-    if (error?.name === "AbortError" || response.writableEnded) return;
-
-    const status = Number(error?.status) || 500;
-    if (status >= 500) console.error("Campus Assistant API error:", error);
-
+    if (response.writableEnded || response.destroyed || (controller.signal.aborted && !timedOut)) return;
+    const status = timedOut ? 504 : Number(error?.status) || 500;
+    const payload = {
+      error: timedOut ? "The reply took too long. Please try again." : error?.code?.startsWith("assistant/") || [401, 403, 429].includes(status)
+        ? error.message : "The campus assistant is temporarily unavailable. Please try again.",
+      code: timedOut ? "assistant/timeout" : error?.code || "assistant/unavailable",
+      retryAfter: error?.retryAfter || 0,
+    };
+    if (status >= 500) console.error("Campus Assistant error:", { status, code: payload.code });
     if (!response.headersSent) {
-      return response.status(status).json({
-        error:
-          status >= 500
-            ? "The campus assistant is temporarily unavailable."
-            : error.message,
-      });
+      if (payload.retryAfter) response.setHeader("Retry-After", String(payload.retryAfter));
+      return response.status(status).json(payload);
     }
-
-    if (!response.writableEnded) response.end();
+    sendEvent(response, "error", payload);
+    if (!response.writableEnded && !response.destroyed) response.end();
+  } finally {
+    clearTimeout(timeout);
+    response.off("close", disconnect);
   }
 }
