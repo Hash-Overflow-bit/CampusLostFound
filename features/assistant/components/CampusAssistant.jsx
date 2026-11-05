@@ -1,14 +1,14 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   FiMessageCircle,
   FiSend,
   FiShield,
+  FiSquare,
   FiX,
   FiZap,
 } from "react-icons/fi";
 import { useAuth } from "../../../AuthContext/AuthContext";
 import StatePanel from "../../../components/state/StatePanel";
-import { getAssistantReportContext } from "../repositories/supabaseAssistantRepository";
 import { askCampusAssistant } from "../services/campusAssistantService";
 import "./CampusAssistant.css";
 
@@ -22,11 +22,11 @@ const WELCOME_MESSAGE = {
   id: "welcome",
   role: "assistant",
   content:
-    "Hi — I’m Campus Assistant. I can help you use CampusLostFound and check public reports from your verified campus for possible matches.",
+    "Hi — I’m Campus Assistant. I can help you use CampusLostFound and check active public reports from your verified campus for possible matches.",
 };
 
-const createMessage = (role, content) => ({
-  id: `${role}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+const createMessage = (role, content, id) => ({
+  id: id || `${role}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
   role,
   content,
 });
@@ -50,10 +50,16 @@ export default function CampusAssistant() {
   );
   const scrollRef = useRef(null);
   const inputRef = useRef(null);
+  const abortRef = useRef(null);
 
   const enabled = isAuthenticated && isEmailVerified && hasTrustedCampus;
   const campusName = campus?.name || profile?.campuses?.name || "your campus";
-  const busy = status === "thinking";
+  const busy = status === "thinking" || status === "streaming";
+
+  const lastUserMessage = useMemo(
+    () => [...messages].reverse().find((message) => message.role === "user") || null,
+    [messages]
+  );
 
   useEffect(() => {
     const handleOnline = () => setOnline(true);
@@ -77,10 +83,18 @@ export default function CampusAssistant() {
   }, [messages, open, status]);
 
   useEffect(() => {
-    if (open) requestAnimationFrame(() => inputRef.current?.focus());
-  }, [open]);
+    if (open && !busy) {
+      requestAnimationFrame(() => inputRef.current?.focus());
+    }
+  }, [open, busy]);
+
+  useEffect(() => () => abortRef.current?.abort(), []);
 
   if (!enabled) return null;
+
+  const stop = () => {
+    abortRef.current?.abort();
+  };
 
   const send = async (rawText, { appendUser = true } = {}) => {
     const text = String(rawText || "").trim().slice(0, 700);
@@ -91,41 +105,73 @@ export default function CampusAssistant() {
       return;
     }
 
-    const userMessage = createMessage("user", text);
     const conversation = messages.filter((message) => message.id !== "welcome");
-    const priorHistory =
-      appendUser || conversation.at(-1)?.role !== "user"
-        ? conversation
-        : conversation.slice(0, -1);
+    let priorHistory = conversation;
 
     if (appendUser) {
-      setMessages((current) => [...current, userMessage]);
+      setMessages((current) => [...current, createMessage("user", text)]);
+    } else {
+      const lastUserIndex = conversation.findLastIndex(
+        (message) => message.role === "user"
+      );
+      priorHistory =
+        lastUserIndex >= 0 ? conversation.slice(0, lastUserIndex) : conversation;
+
+      setMessages((current) => {
+        const index = current.findLastIndex((message) => message.role === "user");
+        return index >= 0 ? current.slice(0, index + 1) : current;
+      });
     }
+
     setInput("");
     setError("");
     setStatus("thinking");
 
-    try {
-      const reports = await getAssistantReportContext({
-        campusId: profile?.campus_id,
-        query: text,
-      });
+    const assistantId = `assistant-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    const controller = new AbortController();
+    abortRef.current = controller;
+    let receivedText = false;
 
-      const reply = await askCampusAssistant({
+    try {
+      await askCampusAssistant({
         message: text,
         history: priorHistory,
-        reports,
         campusName,
-      });
+        signal: controller.signal,
+        onToken: (_chunk, fullText) => {
+          receivedText = true;
+          setStatus("streaming");
+          setMessages((current) => {
+            const existing = current.findIndex((message) => message.id === assistantId);
+            if (existing >= 0) {
+              return current.map((message) =>
+                message.id === assistantId
+                  ? { ...message, content: fullText }
+                  : message
+              );
+            }
 
-      setMessages((current) => [...current, createMessage("assistant", reply)]);
+            return [...current, createMessage("assistant", fullText, assistantId)];
+          });
+        },
+      });
     } catch (assistantError) {
+      if (assistantError?.name === "AbortError") {
+        if (!receivedText) {
+          setError("Response stopped before any answer was received.");
+        }
+        return;
+      }
+
       console.error("Campus Assistant error:", assistantError);
       setError(
         assistantError?.message ||
-          "Campus Assistant could not answer right now. Please try again."
+          (receivedText
+            ? "The live reply was interrupted. You can retry the question."
+            : "Campus Assistant could not answer right now. Please try again.")
       );
     } finally {
+      abortRef.current = null;
       setStatus("idle");
     }
   };
@@ -175,24 +221,33 @@ export default function CampusAssistant() {
           <div className="campus-assistant__privacy">
             <FiShield aria-hidden="true" />
             <p>
-              <strong>Privacy first.</strong> AI receives only public report fields. Your question is processed by an external AI provider, so don’t share passwords, OTPs, phone numbers or secret ownership evidence.
+              <strong>Privacy first.</strong> AI can use only matching active public report fields from your verified campus. Don’t share passwords, OTPs, phone numbers or secret ownership evidence.
             </p>
           </div>
 
           <div className="campus-assistant__messages" ref={scrollRef}>
-            {messages.map((message) => (
-              <div
-                key={message.id}
-                className={`campus-assistant__message campus-assistant__message--${message.role}`}
-              >
-                {message.role === "assistant" && (
-                  <span className="campus-assistant__avatar" aria-hidden="true">C</span>
-                )}
-                <div className="campus-assistant__bubble">
-                  {message.content}
+            {messages.map((message, index) => {
+              const streaming =
+                status === "streaming" &&
+                message.role === "assistant" &&
+                index === messages.length - 1;
+
+              return (
+                <div
+                  key={message.id}
+                  className={`campus-assistant__message campus-assistant__message--${message.role}`}
+                >
+                  {message.role === "assistant" && (
+                    <span className="campus-assistant__avatar" aria-hidden="true">C</span>
+                  )}
+                  <div
+                    className={`campus-assistant__bubble${streaming ? " is-streaming" : ""}`}
+                  >
+                    {message.content}
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
 
             {messages.length === 1 && (
               <div className="campus-assistant__starters" aria-label="Suggested questions">
@@ -209,14 +264,18 @@ export default function CampusAssistant() {
               </div>
             )}
 
-            {busy && (
-              <div className="campus-assistant__message campus-assistant__message--assistant" role="status">
+            {status === "thinking" && (
+              <div
+                className="campus-assistant__message campus-assistant__message--assistant"
+                role="status"
+                aria-live="polite"
+              >
                 <span className="campus-assistant__avatar" aria-hidden="true">C</span>
                 <div className="campus-assistant__bubble campus-assistant__thinking">
                   <span />
                   <span />
                   <span />
-                  <small>Checking your campus</small>
+                  <small>Checking relevant campus reports</small>
                 </div>
               </div>
             )}
@@ -228,10 +287,11 @@ export default function CampusAssistant() {
                 title={online ? "Assistant unavailable" : "You’re offline"}
                 description={error}
                 action={
-                  online && messages.at(-1)?.role === "user"
+                  online && lastUserMessage
                     ? {
                         label: "Retry",
-                        onClick: () => send(messages.at(-1).content, { appendUser: false }),
+                        onClick: () =>
+                          send(lastUserMessage.content, { appendUser: false }),
                         disabled: busy,
                       }
                     : null
@@ -256,26 +316,35 @@ export default function CampusAssistant() {
               onKeyDown={(event) => {
                 if (event.key === "Enter" && !event.shiftKey) {
                   event.preventDefault();
-                  if (input.trim()) send(input);
+                  if (input.trim() && !busy) send(input);
                 }
               }}
-              placeholder="Ask about a lost item, report or privacy…"
+              placeholder={
+                busy
+                  ? "Campus Assistant is replying…"
+                  : "Ask about a lost item, report or privacy…"
+              }
               rows={1}
               maxLength={700}
               disabled={busy}
             />
             <button
-              type="submit"
-              className="campus-assistant__send"
-              disabled={busy || !input.trim() || !online}
-              aria-label="Send message"
+              type={busy ? "button" : "submit"}
+              className={`campus-assistant__send${busy ? " is-stop" : ""}`}
+              onClick={busy ? stop : undefined}
+              disabled={!busy && (!input.trim() || !online)}
+              aria-label={busy ? "Stop reply" : "Send message"}
             >
-              <FiSend />
+              {busy ? <FiSquare /> : <FiSend />}
             </button>
           </form>
 
           <footer className="campus-assistant__footer">
-            <span>AI can make mistakes. Verify possible matches safely.</span>
+            <span>
+              {status === "streaming"
+                ? "Replying live · AI can make mistakes"
+                : "AI can make mistakes. Verify possible matches safely."}
+            </span>
             {messages.length > 1 && (
               <button type="button" onClick={clearConversation} disabled={busy}>
                 Clear chat
@@ -296,7 +365,7 @@ export default function CampusAssistant() {
           {open ? <FiX /> : <FiMessageCircle />}
         </span>
         <span className="campus-assistant__launcher-copy">
-          <small>New</small>
+          <small>AI</small>
           <strong>Ask Campus AI</strong>
         </span>
       </button>
