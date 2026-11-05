@@ -5,6 +5,9 @@ const DEFAULT_MODEL = "nvidia/nemotron-3.5-lightning-free";
 const MAX_MESSAGE_LENGTH = 700;
 const MAX_HISTORY_MESSAGES = 6;
 const MAX_REPORTS = 8;
+const RATE_WINDOW_MS = 60_000;
+const RATE_LIMIT = 10;
+const requestBuckets = new Map();
 
 function redactText(value, maxLength = MAX_MESSAGE_LENGTH) {
   return String(value || "")
@@ -42,6 +45,31 @@ function sanitizeReports(reports) {
     location: redactText(report?.location, 100),
     occurredAt: redactText(report?.occurredAt, 40),
   }));
+}
+
+function enforceRateLimit(userId) {
+  const now = Date.now();
+  const current = requestBuckets.get(userId);
+  const bucket =
+    !current || now - current.startedAt >= RATE_WINDOW_MS
+      ? { startedAt: now, count: 0 }
+      : current;
+
+  bucket.count += 1;
+  requestBuckets.set(userId, bucket);
+
+  // Best-effort serverless throttle. Gateway/provider limits remain the hard backstop.
+  if (requestBuckets.size > 500) {
+    for (const [key, value] of requestBuckets) {
+      if (now - value.startedAt >= RATE_WINDOW_MS * 2) requestBuckets.delete(key);
+    }
+  }
+
+  if (bucket.count > RATE_LIMIT) {
+    const error = new Error("Too many questions. Please wait a minute and try again.");
+    error.status = 429;
+    throw error;
+  }
 }
 
 function getBearerToken(request) {
@@ -169,7 +197,8 @@ export default async function handler(request, response) {
   }
 
   try {
-    await requireVerifiedCampusUser(accessToken);
+    const { user } = await requireVerifiedCampusUser(accessToken);
+    enforceRateLimit(user.id);
 
     const body = typeof request.body === "string" ? JSON.parse(request.body) : request.body || {};
     const message = redactText(body.message);
