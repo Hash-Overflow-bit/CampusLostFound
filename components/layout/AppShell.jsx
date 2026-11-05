@@ -1,6 +1,7 @@
 import { lazy, Suspense } from "react";
 import { useLocation } from "react-router-dom";
 import NetworkStatus from "../state/NetworkStatus";
+import CampusAssistant from "../../features/assistant/components/CampusAssistant";
 
 const Navbar = lazy(() => import("../../componenets/navbar/Navbar"));
 const Footer = lazy(() => import("../../componenets/footer/Footer"));
@@ -22,6 +23,7 @@ export default function AppShell({ children }) {
         </Suspense>
       )}
       <div className="app-shell__content">{children}</div>
+      <CampusAssistant />
       {showFooter && (
         <Suspense fallback={null}>
           <Footer />
